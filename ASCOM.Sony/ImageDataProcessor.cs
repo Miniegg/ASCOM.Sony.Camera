@@ -9,26 +9,26 @@ namespace ASCOM.Sony
 {
     public class ImageStatistics
     {
-        public uint MaxADU { get; set; }
-        public uint MinADU { get; set; }
-        public uint MeanADU { get; set; }
+        public int MaxADU { get; set; }
+        public int MinADU { get; set; }
+        public int MeanADU { get; set; }
 
-        public uint MedianADU { get; set; }
-        public uint Count { get; set; }
+        public int MedianADU { get; set; }
+        public int Count { get; set; }
     }
 
     public class ImageDataProcessor
     {
         public ImageStatistics GetImageStatistics(Array imageArray)
         {
-            ulong sum = 0;
-            uint count = 0;
-            uint min = uint.MaxValue;
-            uint max = 0;
+            long sum = 0;
+            int count = 0;
+            int min = int.MaxValue;
+            int max = 0;
 
             int rank = imageArray.Rank;
 
-            uint[] aduValues = new uint[imageArray.Length];
+            int[] aduValues = new int[imageArray.Length];
 
             for (int i = 0; i < imageArray.GetLength(0); i++)
             {
@@ -38,7 +38,7 @@ namespace ASCOM.Sony
                     {
                         for (int k=0; k < imageArray.GetLength(2); k++)
                         {
-                            uint aduValue = (uint) imageArray.GetValue(i, j, k);
+                            int aduValue = (int) imageArray.GetValue(i, j, k);
 
                             if (aduValue < min)
                             {
@@ -56,7 +56,7 @@ namespace ASCOM.Sony
                     }
                     else
                     {
-                        uint aduValue = (uint)imageArray.GetValue(i, j);
+                        int aduValue = (int)imageArray.GetValue(i, j);
 
                         if (aduValue < min)
                         {
@@ -74,7 +74,7 @@ namespace ASCOM.Sony
                 }
             }
             
-            uint mean = (uint)(((double)sum) / (imageArray.Length));
+            int mean = (int)(((double)sum) / (imageArray.Length));
 
             return  new ImageStatistics()
             {
@@ -85,8 +85,8 @@ namespace ASCOM.Sony
                 Count = count
             };
         }
-
-        public unsafe uint[,] ReadRaw(string fileName)
+        
+        public unsafe int[,] ReadRaw(string fileName)
         {
             IntPtr data = LoadRaw(fileName);
 
@@ -129,8 +129,8 @@ namespace ASCOM.Sony
             ushort height = dataStructure.rawdata.sizes.height;
             //ushort cropWidth = dataStructure.rawdata.sizes.raw_crop.cwidth;
             //ushort cropHeight = dataStructure.rawdata.sizes.raw_crop.cheight;
-
-            var pixels = new uint[width, height];
+            
+            var pixels = new int[width, height];
 
             ushort* ptr = (ushort*)dataStructure.rawdata.raw_image.ToPointer();
 
@@ -148,7 +148,7 @@ namespace ASCOM.Sony
             return pixels;
         }
 
-        public uint[,,] ReadAndDebayerRaw(string fileName)
+        public int[,,] ReadAndDebayerRaw(string fileName)
         {
             IntPtr data = LoadRaw(fileName);
 
@@ -159,7 +159,7 @@ namespace ASCOM.Sony
             ushort width = dataStructure.sizes.iwidth;
             ushort height = dataStructure.sizes.iheight;
 
-            var pixels = new uint[width, height, 3];
+            var pixels = new int[width, height, 3];
 
             for (int rc = 0; rc < height * width; rc++)
             {
@@ -180,7 +180,7 @@ namespace ASCOM.Sony
             return pixels;
         }
 
-        public uint[,,] ReadJpeg(string fileName)
+        public int[,,] ReadJpeg(string fileName)
         {
             using (Bitmap img = new Bitmap(fileName))
             {
@@ -190,7 +190,7 @@ namespace ASCOM.Sony
             }
         }
 
-        private uint[,,] ReadBitmap(Bitmap img)
+        private int[,,] ReadBitmap(Bitmap img)
         {
             BitmapData data = img.LockBits(new Rectangle(0, 0, img.Width, img.Height), ImageLockMode.ReadOnly, img.PixelFormat);
             IntPtr ptr = data.Scan0;
@@ -204,7 +204,7 @@ namespace ASCOM.Sony
             var width = img.Width;
             var height = img.Height;
 
-            var result = new uint[width, height, 3];
+            var result = new int[width, height, 3];
 
             for (int rc = 0; rc < width * height; rc++)
             {
@@ -268,7 +268,7 @@ namespace ASCOM.Sony
                 xLength = Math.Min(xLength, NumX);
                 yLength = Math.Min(yLength, NumY);
 
-                result = rank == 3 ? (Array) new uint[xLength, yLength, 3] : new uint[xLength, yLength];
+                result = rank == 3 ? (Array) new int[xLength, yLength, 3] : new int[xLength, yLength];
 
                 for (int x = 0; x < xLength; x++)
                 { 
@@ -297,7 +297,7 @@ namespace ASCOM.Sony
             return result;
         }
 
-        private void exif_parser_callback(IntPtr context, int tag, int type, int len, uint ord, IntPtr ifp)
+        private void exif_parser_callback(IntPtr context, int tag, int type, int len, int ord, IntPtr ifp)
         {
 
         }
@@ -327,12 +327,12 @@ namespace ASCOM.Sony
             return cut;
         }
 
-        private uint GetMedian(uint[] aduValues)
+        private int GetMedian(int[] aduValues)
         {
             Array.Sort(aduValues);
-            uint size = (uint)aduValues.Length;
-            uint mid = size / 2;
-            uint median = (size % 2 != 0) ? aduValues[mid] : (aduValues[mid] + aduValues[mid - 1]) / 2;
+            int size = (int)aduValues.Length;
+            int mid = size / 2;
+            int median = (size % 2 != 0) ? aduValues[mid] : (aduValues[mid] + aduValues[mid - 1]) / 2;
             return median;
         }
 

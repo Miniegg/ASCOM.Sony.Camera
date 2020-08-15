@@ -113,12 +113,15 @@ namespace ASCOM.Sony
                     //report stats to log (if tracing enabled)
                     if (tl.Enabled)
                     {
+                        tl.LogMessage("_sonyCamera_ExposureReady", "GetStats");
                         var stats = _imageDataProcessor.GetImageStatistics(e.ImageArray);
                         if (stats != null)
                         {
                             tl.LogMessage("_sonyCamera_ExposureReady", $"Image statistics: ADU min/max/mean/median: {stats.MinADU}/{stats.MaxADU}/{stats.MeanADU}/{stats.MedianADU}.");
                         }
                     }
+
+                    tl.LogMessage("_sonyCamera_ExposureReady", StartX + " StartX," + StartY + " StartY, " + NumX + "NumX," + NumY + "NumY," +  CameraXSize + "CameraXSize," + CameraYSize + "CameraYSize");
                     cameraImageArray = _imageDataProcessor.CutImageArray(e.ImageArray, StartX, StartY, NumX, NumY, CameraXSize, CameraYSize);
                     _cameraState = CameraStates.cameraIdle;
                     cameraImageReady = true;
@@ -155,6 +158,9 @@ namespace ASCOM.Sony
 
         public void StopExposure()
         {
+            if (!cameraModel.CanStopExposure)
+                throw new ASCOM.MethodNotImplementedException("Cannot AbortExposure, CanStopExposure set to false");
+
             CheckConnected("Camera not connected");
             tl.LogMessage("StopExposure", "");
             if (_cameraState == CameraStates.cameraExposing)
@@ -297,6 +303,7 @@ namespace ASCOM.Sony
         {
             get
             {
+                // this gets called a LOT, will bloat debug if enabled
                 tl.LogMessage("CameraState Get", _cameraState.ToString());
                 return _cameraState;
             }
@@ -327,8 +334,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("CanAbortExposure Get", true.ToString());
-                return true;
+                tl.LogMessage("CanAbortExposure Get", cameraModel.CanStopExposure.ToString()); 
+                return cameraModel.CanStopExposure;
             }
         }
 
@@ -381,7 +388,7 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("CanStopExposure Get", true.ToString());
+                tl.LogMessage("CanStopExposure Get", false.ToString());
                 return true;
             }
         }

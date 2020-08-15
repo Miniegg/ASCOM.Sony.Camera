@@ -83,13 +83,7 @@ namespace ASCOM.Sony
         const int WM_LBUTTONDOWN = 0x201;
         const int WM_LBUTTONUP = 0x202;
         #endregion
-
-        const string MinISO = "AUTO";
-        const string MaxISO = "25600";
-
-        const string MinShutterSpeed = "1/8000";
-        const string MaxShutterSpeed = "BULB";
-
+        
         private IntPtr _shutterButtonHandle;
         private IntPtr _isoLabelHandle;
         private IntPtr _isoIncreaseButtonHandle;
@@ -103,6 +97,7 @@ namespace ASCOM.Sony
         private TreeNode<IntPtr> _hWindowTree;
 
         private CameraModel _cameraModel;
+        private int _remainingExposure;
 
         public bool IsConnected { get; private set; }
 
@@ -141,7 +136,7 @@ namespace ASCOM.Sony
 
                 while (CanAccessFile(filePath) == false)
                 {
-                    Thread.Sleep(100);
+                    Thread.Sleep(500);
                 }
 
                 Thread.Sleep(1000);//for some reason we need to wait here for file lock to be released on image file
@@ -213,7 +208,7 @@ namespace ASCOM.Sony
                 {
                     throw new Exception("Unable to locate shutter button in Imaging Edge Remote app main window",e);
                 }
-
+                
                 try
                 {
                     _shutterSpeedLabelHandle = _hWindowTree.Children[3].Children[2].Children[7].Value;
@@ -376,83 +371,86 @@ namespace ASCOM.Sony
         private bool exposureInProgress = false;
         private static object _lock = new object();
 
-        private void SetISO(short iso)
+        private void SetISO(short shortRequestedISO)
         {
-            string currentISOAsString = GetCurrentISO();
-
-            bool increase = true;
-            
-            if (string.Compare(currentISOAsString,"AUTO",StringComparison.InvariantCultureIgnoreCase)!=0)
+            var requestedISO = shortRequestedISO.ToString();
+            while (requestedISO != GetCurrentISO())
             {
-                short currentISO = short.Parse(currentISOAsString);
+                var requestedIndex = Array.FindIndex(_cameraModel.AllGains, item => item == requestedISO);
+                var currentIndex = Array.FindIndex(_cameraModel.AllGains, item => item == GetCurrentISO());
 
-                if (currentISO == iso)
-                {
-                    return;
-                }
+                var ISOAdjustment = requestedIndex - currentIndex;
 
-                if (currentISO > iso)
+                while (ISOAdjustment != 0)
                 {
-                    increase = false;
-                }
-
-                while (string.Compare(GetCurrentISO(), iso.ToString(), StringComparison.InvariantCultureIgnoreCase) != 0)
-                {
-                    if (increase)
-                    {
-                        IncreaseISO();
-                    }
-                    else
+                    if (ISOAdjustment < 0)
                     {
                         DecreaseISO();
+                        ISOAdjustment++;
                     }
-                    Thread.Sleep(1000);
+                    else if (ISOAdjustment > 0)
+                    {
+                        IncreaseISO();
+                        ISOAdjustment--;
+                    }
                 }
+                Thread.Sleep(1000);
             }
         }
 
         private void SyncSaveFolder()
         {
             //it is possible that user changed save folder in remote app - this method ensure that we looking for right folder
-            if (_fileSystemWatcher!=null && _fileSystemWatcher.Path != GetCurrentSaveFolder())
+            if (_fileSystemWatcher != null && _fileSystemWatcher.Path != GetCurrentSaveFolder())
             {
                 _fileSystemWatcher.Path = GetCurrentSaveFolder();
             }
         }
-
-        private void SetShutterSpeed(double durationSeconds, double minDurationForBulbMode)
+		
+        private void SetShutterSpeed(double durationSeconds, bool enableBulbMode)
         {
-            string shutterSpeed;
-            if (durationSeconds < minDurationForBulbMode)
+            string requestedShutterSpeed;
+            if (enableBulbMode)
             {
-                shutterSpeed =
+                requestedShutterSpeed = "BULB";
+            }
+            else
+            {
+                requestedShutterSpeed =
                     (_cameraModel.ShutterSpeeds.Where(ss => ss.DurationSeconds <= durationSeconds)
                          .OrderByDescending(ss => ss.DurationSeconds).FirstOrDefault() ??
                      _cameraModel.ShutterSpeeds.OrderBy(ss => ss.DurationSeconds).First()).Name;
             }
-            else
+                        
+            while (requestedShutterSpeed != GetCurrentShutterSpeed())
             {
-                shutterSpeed = "BULB";
+                AdjustShutterSpeed(requestedShutterSpeed, GetCurrentShutterSpeed());
+                Thread.Sleep(1000);
             }
+        }
 
-            bool increase = true;
-            if (shutterSpeed != "BULB")
+        public void AdjustShutterSpeed(string requestedShutterSpeed, string currentShutterSpeedg)
+        {
+            var requestedIndex = Array.FindIndex(_cameraModel.ShutterSpeeds, item => item.Name == requestedShutterSpeed);
+            var currentIndex = Array.FindIndex(_cameraModel.ShutterSpeeds, item => item.Name == currentShutterSpeedg);
+
+            var shutterAdjustment = requestedIndex - currentIndex;
+
+            while (shutterAdjustment != 0)
             {
-                string currentShutterSpeedAsString = GetCurrentShutterSpeed();
-
-                var currentShutterSpeed = _cameraModel.ShutterSpeeds.FirstOrDefault(ss => ss.Name == currentShutterSpeedAsString);
-
-                if (currentShutterSpeed == null)
+                if (shutterAdjustment < 0)
                 {
-                    increase = false;
+                    DecreaseShutterSpeed();
+                    shutterAdjustment++;
                 }
-                else
+                else if (shutterAdjustment > 0)
                 {
-                    var requestedShutterSpeed = _cameraModel.ShutterSpeeds.First(ss => ss.Name == shutterSpeed);
-
-                    increase = Array.IndexOf(_cameraModel.ShutterSpeeds, requestedShutterSpeed) > Array.IndexOf(_cameraModel.ShutterSpeeds, currentShutterSpeed);
+                    IncreaseShutterSpeed();
+                    shutterAdjustment--;
                 }
             }
+        }
+		
 
             while (GetCurrentShutterSpeed() != shutterSpeed)
             {
@@ -468,9 +466,8 @@ namespace ASCOM.Sony
             }
         }
 
-        public void StartExposure(short iso, double durationSeconds, double minDurationForBulbMode)
+        public void StartExposure(short iso, double durationSeconds, bool enableBulbMode)
         {
-
             if (IsConnected == false)
             {
                 throw new ASCOM.NotConnectedException();
@@ -481,12 +478,11 @@ namespace ASCOM.Sony
                 throw new ASCOM.InvalidOperationException("Exposure already in progress");
             }
 
-            _exposureBackgroundWorker = new BackgroundWorker(){ WorkerReportsProgress=false, WorkerSupportsCancellation = true};
+            _exposureBackgroundWorker = new BackgroundWorker() { WorkerReportsProgress = false, WorkerSupportsCancellation = true };
 
-            _exposureBackgroundWorker.DoWork += new DoWorkEventHandler( ((sender, args) =>
+            _exposureBackgroundWorker.DoWork += new DoWorkEventHandler(((sender, args) =>
             {
-
-                SetShutterSpeed(durationSeconds, minDurationForBulbMode);
+                SetShutterSpeed(durationSeconds, enableBulbMode);
                 SetISO(iso);
                 SyncSaveFolder();
 
@@ -495,15 +491,11 @@ namespace ASCOM.Sony
                     try
                     {
                         BeginExposure();
-                        if (durationSeconds >= minDurationForBulbMode)
+                        _remainingExposure = (int)durationSeconds;
+                        while (_remainingExposure > 0)
                         {
-                            Thread.Sleep((int)(durationSeconds * 1000));
-                        }
-
-                        if (args.Cancel == false)
-                        {
-                            EndExposure(durationSeconds >= minDurationForBulbMode); //we dont call EndExposure in case if background worker cancelled as we assume it has been already ended
-                            _fileSystemWatcher.EnableRaisingEvents = true;
+                            Thread.Sleep(1000);
+                            _remainingExposure--;
                         }
                     }
                     finally
@@ -513,7 +505,6 @@ namespace ASCOM.Sony
                             exposureInProgress = false;
                         }
                     }
-                    
                 }
             }));
 
@@ -521,6 +512,7 @@ namespace ASCOM.Sony
             {
                 if (args.Cancelled == false)
                 {
+                    _fileSystemWatcher.EnableRaisingEvents = true;
                     ExposureCompleted?.Invoke(this, new ExposureCompletedEventArgs());
                 }
             }));
@@ -570,10 +562,14 @@ namespace ASCOM.Sony
                 if (exposureInProgress == true)
                 {
                     exposureInProgress = false;
-                    if (shutter)
+                    if (shutter && _cameraModel.CanStopExposure)
                     {
                         PostMessage(_shutterButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
                         PostMessage(_shutterButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                    }
+                    else
+                    {
+                        Thread.Sleep(1000 * _remainingExposure);
                     }
                 }
             }
@@ -582,98 +578,74 @@ namespace ASCOM.Sony
         private string GetCurrentISO()
         {
             if (IsConnected == false)
-            {
                 throw new InvalidOperationException("Camera not connected.");
-            }
-
             return GetWindowText(_isoLabelHandle);
         }
 
         private void IncreaseISO()
         {
             if (IsConnected == false)
-            {
                 throw new InvalidOperationException("Camera not connected.");
-            }
 
-            if (GetCurrentISO() == MaxISO)
-            {
+            if (GetCurrentISO() == _cameraModel.Gains.Last().ToString())
                 return;
-            }
 
             PostMessage(_isoIncreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
             PostMessage(_isoIncreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update ISO
-            Thread.Sleep(1000);
-
+            Thread.Sleep(200);
         }
 
         private void DecreaseISO()
         {
             if (IsConnected == false)
-            {
                 throw new InvalidOperationException("Camera not connected.");
-            }
 
-            if (GetCurrentISO() == MinISO)
-            {
+            if (GetCurrentISO() == _cameraModel.Gains.First().ToString())
                 return;
-            }
 
             PostMessage(_isoDecreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
             PostMessage(_isoDecreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update ISO
-            Thread.Sleep(1000);
+            Thread.Sleep(200);
         }
 
         private void IncreaseShutterSpeed()
         {
             if (IsConnected == false)
-            {
                 throw new InvalidOperationException("Camera not connected.");
-            }
 
-            if (GetCurrentShutterSpeed() == MaxShutterSpeed)
-            {
+            if (GetCurrentShutterSpeed() == _cameraModel.ShutterSpeeds.Last().Name)
                 return;
-            }
 
             PostMessage(_shutterSpeedIncreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
             PostMessage(_shutterSpeedIncreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
-
             //TODO: properly wait sony remote app to update Shutter Speed
-            Thread.Sleep(1000);
+            Thread.Sleep(200);
         }
 
         private void DecreaseShutterSpeed()
         {
             if (IsConnected == false)
-            {
                 throw new InvalidOperationException("Camera not connected.");
-            }
 
-            if (GetCurrentShutterSpeed() == MinShutterSpeed)
-            {
+            if (GetCurrentShutterSpeed() == _cameraModel.ShutterSpeeds.First().Name)
                 return;
-            }
 
             PostMessage(_shutterSpeedDecreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
             PostMessage(_shutterSpeedDecreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update Shutter Speed
-            Thread.Sleep(1000);
+            Thread.Sleep(200);
         }
 
         private string GetCurrentShutterSpeed()
         {
             if (IsConnected == false)
-            {
                 throw new InvalidOperationException("Camera not connected.");
-            }
-
             return GetWindowText(_shutterSpeedLabelHandle);
         }
 
@@ -683,9 +655,7 @@ namespace ASCOM.Sony
 
             // If titleSize is 0, there is no title so return an empty string (or null)
             if (length == 0)
-            {
                return string.Empty;
-            }
  
             StringBuilder sbBuffer = new StringBuilder(length + 1);
 

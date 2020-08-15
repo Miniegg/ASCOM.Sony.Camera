@@ -112,22 +112,25 @@ namespace ASCOM.Sony
     public class CameraModel
     {
         public string ID { get; set; }
+
         public string Name { get; set; }
 
         public Sensor Sensor { get; set; }
-        
+
+        public bool CanStopExposure { get; set; }
+
         public double ExposureMin { get; set; }
 
         public double ExposureMax { get; set; }
+
+        public string[] AllGains { get; set; }
 
         public short[] Gains { get; set; }
 
         public ShutterSpeed[] ShutterSpeeds { get; set; }
         
-        
         public double ExposureResolution { get; set; }
-        
-        
+                
         public static CameraModel[] Models { get; set; }
     }
 }

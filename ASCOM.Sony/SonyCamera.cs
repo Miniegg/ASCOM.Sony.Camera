@@ -52,7 +52,7 @@ namespace ASCOM.Sony
         {
             try
             {
-                _remoteApp.StartExposure(iso, durationSeconds, _cameraModel.ShutterSpeeds.Select(s=>s.DurationSeconds).Max());
+                _remoteApp.StartExposure(iso, durationSeconds);
             }
             catch (Exception e)
             {

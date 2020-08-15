@@ -8,11 +8,47 @@ using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Newtonsoft.Json;
+using System.Threading;
+using Microsoft.Win32;
 
 namespace ASCOM.Sony.TestConsoleApp
 {
     public class Program
     {
+        static void Main(string[] args)
+        {
+            var cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("cameramodels.json"));
+
+            //SonyCamera camera = new SonyCamera(cameraModels.First(m => m.ID == "ILCE-7S"), ImageFormat.CFA, false);
+            var camera = new Camera();
+            camera.Connected = true;
+
+            if (camera.Connected)
+            {
+                Console.WriteLine("Press S to take exposure.");
+                do
+                {
+                    var key = Console.ReadKey(true);
+                    if (key.Key == ConsoleKey.S)
+                    {
+                        var exposureLength = (double)1 / 40;
+                        var lightFrame = true;
+                        camera.Gain = 0;
+                        camera.StartExposure(exposureLength, lightFrame);
+
+                        while (!camera.ImageReady)
+                        {
+                            Thread.Sleep(100);
+                        }
+
+                        var image = camera.ImageArray;
+                    }
+                } while (true);
+            }
+        }
+
+
+/*
         static void Main(string[] args)
         {
             var cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("cameramodels.json"));
@@ -110,6 +146,7 @@ namespace ASCOM.Sony.TestConsoleApp
                 }
             } while (true);
         }
+*/
 
         private static void WriteImageStatistics(ImageDataProcessor dataProcessor, Array array)
         {
@@ -152,7 +189,7 @@ namespace ASCOM.Sony.TestConsoleApp
             Console.WriteLine($"ADU max/min: {flatArray.Min()}/{flatArray.Max()}");
 
             Console.WriteLine("Saving to tiff...");
-            SaveToGrayscaleTiff("F:\\astrophoto\\~test\\test.tiff", array);
+            SaveToGrayscaleTiff("D:\\astrophoto\\~test\\test.tiff", array);
 
         }
 
