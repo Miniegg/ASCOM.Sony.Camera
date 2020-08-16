@@ -17,9 +17,9 @@ namespace ASCOM.Sony.TestConsoleApp
     {
         static void Main(string[] args)
         {
+            // make sure to build+install ASCOM driver first
+            // use the ASCOM Diagnostics utility to choose the correct camera
             var cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("cameramodels.json"));
-
-            //SonyCamera camera = new SonyCamera(cameraModels.First(m => m.ID == "ILCE-7S"), ImageFormat.CFA, false);
             var camera = new Camera();
             camera.Connected = true;
 
@@ -32,9 +32,8 @@ namespace ASCOM.Sony.TestConsoleApp
                     if (key.Key == ConsoleKey.S)
                     {
                         var exposureLength = (double)1 / 40;
-                        var lightFrame = true;
                         camera.Gain = 0;
-                        camera.StartExposure(exposureLength, lightFrame);
+                        camera.StartExposure(exposureLength, true);
 
                         while (!camera.ImageReady)
                         {

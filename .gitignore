@@ -261,3 +261,4 @@ __pycache__/
 
 # project related #
 .resources/
+/ASCOM.Sony.Camera.Setup.exe

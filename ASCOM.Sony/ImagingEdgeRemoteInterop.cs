@@ -406,7 +406,7 @@ namespace ASCOM.Sony
                 _fileSystemWatcher.Path = GetCurrentSaveFolder();
             }
         }
-		
+
         private void SetShutterSpeed(double durationSeconds, bool enableBulbMode)
         {
             string requestedShutterSpeed;
@@ -451,22 +451,7 @@ namespace ASCOM.Sony
             }
         }
 		
-
-            while (GetCurrentShutterSpeed() != shutterSpeed)
-            {
-                if (increase)
-                {
-                    IncreaseShutterSpeed();
-                }
-                else
-                {
-                    DecreaseShutterSpeed();
-                }
-                Thread.Sleep(1000);
-            }
-        }
-
-        public void StartExposure(short iso, double durationSeconds, bool enableBulbMode)
+        public void StartExposure(short iso, double durationSeconds, bool enableBulbMode = false)
         {
             if (IsConnected == false)
             {

@@ -595,7 +595,7 @@
       "MaxADU": 16383,
       "ElectronsPerADU": 1.0,
       "FullWellCapacity": 32767.0,
-      "CCDTemperature": 0 
+      "CCDTemperature": 0
     },
     "ExposureMin": 0.000125,
     "ExposureMax": 3600.0,
@@ -768,8 +768,10 @@
       {
         "DurationSeconds": 2.0,
         "Name": "BULB"
-      },
-      {
+      }
+    ]
+  },
+  {
     "ID": "ILCE-7S",
     "Name": "Sony A7s",
     "Sensor": {
