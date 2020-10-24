@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -42,6 +44,51 @@ namespace ASCOM.Sony
 
     }
 
+    public enum WindowType
+    {
+        cannotCreateFolder,
+        cannotAccessFolder,
+        noCameraConnected,
+        selectCamera,
+        main,
+        noWindow
+    }
+    
+    public class Window
+    {
+        public WindowType WindowType;
+        public List<WindowObject> WindowObjects;
+
+        public Window(WindowType windowType, List<WindowObject> windowObject)
+        {
+            WindowType = windowType;
+            WindowObjects = windowObject;
+        }
+
+        public Window(WindowType windowType, WindowObject windowObject)
+        {
+            WindowType = windowType;
+            WindowObjects = new List<WindowObject>(){ windowObject };
+        }
+    }
+
+    public class WindowObject
+    {
+        public string Name;
+        public IntPtr Handle;
+        public List<int> ChildIndex;
+        public string ExactWindowText;
+
+        public WindowObject(string name, IntPtr handle, List<int> childIndex, string exactWindowText = "")
+        {
+            Name = name;
+            Handle = handle;
+            ChildIndex = childIndex;
+            ExactWindowText = exactWindowText;
+        }
+    }
+
+
     internal class ImagingEdgeRemoteInterop
     {
         private ImageDataProcessor _imageDataProcessor = new ImageDataProcessor();
@@ -65,6 +112,9 @@ namespace ASCOM.Sony
         [DllImport("user32.dll")]
         static extern IntPtr GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 
+        [DllImport("USER32.DLL")]
+        private static extern int GetWindowTextLength(IntPtr hWnd);
+
         [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Auto)]
         public static extern IntPtr GetParent(IntPtr hWnd);
 
@@ -77,38 +127,111 @@ namespace ASCOM.Sony
 
         [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, int wparam, int lparam);
-
+        
         const int WM_GETTEXT = 0x000D;
         const int WM_GETTEXTLENGTH = 0x000E;
         const int WM_LBUTTONDOWN = 0x201;
         const int WM_LBUTTONUP = 0x202;
+        const int BM_CLICK = 0x00F5;
         #endregion
-        
-        private IntPtr _shutterButtonHandle;
-        private IntPtr _isoLabelHandle;
-        private IntPtr _isoIncreaseButtonHandle;
-        private IntPtr _isoDecreaseButtonHandle;
-        private IntPtr _shutterSpeedLabelHandle;
-        private IntPtr _shutterSpeedIncreaseButtonHandle;
-        private IntPtr _shutterSpeedDecreaseButtonHandle;
-        private IntPtr _folderComboboxHandle;
-        private IntPtr _fileFormatButtonHandle;
+
+        private List<Window> Windows;
 
         private TreeNode<IntPtr> _hWindowTree;
 
         private CameraModel _cameraModel;
         private int _remainingExposure;
+        private string _monitorFolderPath;
 
         public bool IsConnected { get; private set; }
 
         private ImageFormat _imageFormat;
         private bool _autoDeleteImageFile;
 
+        private BackgroundWorker _exposureBackgroundWorker;
+
+        private FileSystemWatcher _fileSystemWatcher;
+
+        private bool exposureInProgress = false;
+        private static object _lock = new object();
+
         public ImagingEdgeRemoteInterop(CameraModel cameraModel, ImageFormat imageFormat, bool autoDeleteImageFile)
         {
             _cameraModel = cameraModel;
             _imageFormat = imageFormat;
             _autoDeleteImageFile = autoDeleteImageFile;
+            CreateWindowObjects();
+        }
+
+        // replace this all with JSON
+        // window text must match exact text
+        private void CreateWindowObjects()
+        {
+            var noCameraConnectedWindowObjects = new List<WindowObject>()
+            {
+                new WindowObject("ok", new IntPtr(), new List<int>(){ 0 }, "OK" ),
+                new WindowObject("cameraNotConnectedMessage", new IntPtr(), new List<int>(){ 2 }, "The camera is not connected. Check the USB or network connection."),
+            };
+
+            var selectCameraWindowObjects = new List<WindowObject>()
+            {
+                new WindowObject("listView", new IntPtr(), new List<int>(){ 0 } ),
+                new WindowObject("refresh", new IntPtr(), new List<int>(){ 2 } , "Refresh"),
+                new WindowObject("close", new IntPtr(), new List<int>(){ 3 }, "Close" ),
+            };
+
+            var mainWindowObjects = new List<WindowObject>()
+            {
+                new WindowObject("shutterButton", new IntPtr(), new List<int>(){ 3,0,0 } ),
+                new WindowObject("modeLabel", new IntPtr(), new List<int>(){ 3,2,0 }, "  Mode" ),
+                new WindowObject("FLabel", new IntPtr(), new List<int>(){ 3,2,2 }, "  F" ),
+                new WindowObject("shutterSpeedLabel", new IntPtr(), new List<int>(){ 3,2,7 } ),
+                new WindowObject("isoLabel", new IntPtr(), new List<int>(){ 3,2,9 } ),
+                new WindowObject("shutterSpeedIncreaseButton", new IntPtr(), new List<int>(){ 3,2,14 } ),
+                new WindowObject("shutterSpeedDecreaseButton", new IntPtr(), new List<int>(){ 3,2,15 } ),
+                new WindowObject("isoIncreaseButton", new IntPtr(), new List<int>(){ 3,2,18 } ),
+                new WindowObject("isoDecreaseButton", new IntPtr(), new List<int>(){ 3,2,19 } ),
+                new WindowObject("fileFormatButton", new IntPtr(), new List<int>(){ 3,3,9 } ),
+                new WindowObject("folderCombobox", new IntPtr(), new List<int>(){ 3,6,9 } ),
+            };
+            
+            var cannotCreateFolderWindowObjects = new List<WindowObject>()
+            {
+                new WindowObject("ok", new IntPtr(), new List<int>(){ 0 }, "OK" ),
+                new WindowObject("cannotAccessTheFolder", new IntPtr(), new List<int>(){ 2 }, "Cannot create a folder because an invalid folder name was entered." ),
+            };
+
+            var cannotAccessFolderWindowObjects = new List<WindowObject>()
+            {
+                new WindowObject("ok", new IntPtr(), new List<int>(){ 0 }, "OK" ),
+                new WindowObject("cannotAccessTheFolder", new IntPtr(), new List<int>(){ 2 }, "Cannot access the folder." ),
+            };
+
+            Windows = new List<Window>()
+            {
+                new Window(WindowType.noCameraConnected, noCameraConnectedWindowObjects),
+                new Window(WindowType.selectCamera, selectCameraWindowObjects),
+                new Window(WindowType.cannotAccessFolder, cannotAccessFolderWindowObjects),
+                new Window(WindowType.cannotCreateFolder, cannotCreateFolderWindowObjects),
+                new Window(WindowType.main, mainWindowObjects)
+            };
+        }
+
+        private IntPtr GetHandle(WindowType windowType, string handleName)
+        {
+            Window window = Windows.Where(x => x.WindowType == windowType).FirstOrDefault();
+            WindowObject windowObject = window.WindowObjects.Where(x => x.Name == handleName).FirstOrDefault();
+            return windowObject.Handle;
+        }
+
+        private void PressButton(WindowType windowType, string button)
+        {
+            PostMessage(GetHandle(windowType, button), BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(100);
+            PostMessage(GetHandle(windowType, button), BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+            //PostMessage(GetHandle(windowType, button), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+            //Thread.Sleep(100);
+            //PostMessage(GetHandle(windowType, button), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
         }
 
         private Array ReadCameraImageArray(string rawFileName)
@@ -160,7 +283,7 @@ namespace ASCOM.Sony
                 {
                     long length = fs.Length;
                     fs.Close();
-                    return length>0;
+                    return length > 0;
                 }
             }
             catch (IOException)
@@ -180,196 +303,188 @@ namespace ASCOM.Sony
             try
             {
                 var hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
-
                 if (hRemoteAppWindow == IntPtr.Zero)
                 {
+                    Process.Start(@"D:\SonyImagaingEdge\Sony\Remote.exe");
+
+                    var checkWindowAttempts = 10;
+                    var msBetweenCheck = 500;
+                    for (int i = 0; i < checkWindowAttempts; i++)
+                    {
+                        hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
+                        if (hRemoteAppWindow == IntPtr.Zero)
+                            Thread.Sleep(msBetweenCheck);
+                        else
+                            break;
+                    }
+                }
+                if (hRemoteAppWindow == IntPtr.Zero)
                     throw new Exception("Unable to locate Imaging Edge Remote app main window.");
-                }
 
-                try
+                while (true)
                 {
-                    _hWindowTree = BuildWindowHandlesTree(hRemoteAppWindow);
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to build control hierarchy of Imaging Edge Remote app main window.",e);
-                }
-                
-                //populate important UI elements window handlersv
-                try
-                {
-                    _shutterButtonHandle = _hWindowTree.Children[3].Children[0].Children[0].Value;
-                    if (_shutterButtonHandle == IntPtr.Zero)
+                    populateWindowHandles();
+                    switch (whatsTheCurrentWindow())
                     {
-                        throw new Exception("Shutter Button handle not found.");
+                        case WindowType.noCameraConnected:
+                            NoCameraConnectedPressOk();
+                            break;
+                        case WindowType.selectCamera:
+                            SelectFirstCamera();
+                            break;
+                        case WindowType.main:
+                            StartImaging();
+                            IsConnected = true;
+                            return;
+                        case WindowType.cannotAccessFolder:
+                            CannotAccessFolderPressOk();
+                            return;
+                        case WindowType.cannotCreateFolder:
+                            CannotCreateFolderPressOk();
+                            return;
+                        case WindowType.noWindow:
+                            Thread.Sleep(500); // chill, sometimes there are no active remote windows when loading the program
+                            return;
+                        default:
+                            throw new Exception("Unknown window");
                     }
+                    Thread.Sleep(500);
                 }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate shutter button in Imaging Edge Remote app main window",e);
-                }
-                
-                try
-                {
-                    _shutterSpeedLabelHandle = _hWindowTree.Children[3].Children[2].Children[7].Value;
-                    if (_shutterSpeedLabelHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Shutter speed label handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate current shutter speed label in Imaging Edge Remote app main window",e);
-                }
-
-                try
-                {
-                    _isoLabelHandle = _hWindowTree.Children[3].Children[2].Children[9].Value;
-                    if (_isoLabelHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Current ISO label handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate current ISO label in Imaging Edge Remote app main window", e);
-                }
-
-                try
-                {
-                    _shutterSpeedIncreaseButtonHandle = _hWindowTree.Children[3].Children[2].Children[14].Value;
-                    if (_shutterSpeedIncreaseButtonHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Increase shutter speed button handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate increase shutter speed button in Imaging Edge Remote app main window",e);
-                }
-
-                try
-                {
-                    _shutterSpeedDecreaseButtonHandle = _hWindowTree.Children[3].Children[2].Children[15].Value;
-                    if (_shutterSpeedDecreaseButtonHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Decrease shutter speed button handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate decrease shutter speed button in Imaging Edge Remote app main window",e);
-                }
-
-                try
-                {
-                    _isoIncreaseButtonHandle = _hWindowTree.Children[3].Children[2].Children[18].Value;
-                    if (_isoIncreaseButtonHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Increase ISO button handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate increase ISO button in Imaging Edge Remote app main window", e);
-                }
-
-                try
-                {
-                    _isoDecreaseButtonHandle = _hWindowTree.Children[3].Children[2].Children[19].Value;
-                    if (_isoIncreaseButtonHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Decrease ISO button handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate decrease ISO button in Imaging Edge Remote app main window", e);
-                }
-
-                try
-                {
-                    _fileFormatButtonHandle = _hWindowTree.Children[3].Children[3].Children[0].Value;
-                    if (_fileFormatButtonHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("File format button handle not found");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception("Unable to locate file format button in Imaging Edge Remote app main window");
-                }
-
-                string monitorFolderPath;
-
-                try
-                {
-                    _folderComboboxHandle = _hWindowTree.Children[3].Children[6].Children[9].Value;
-                    if (_folderComboboxHandle == IntPtr.Zero)
-                    {
-                        throw new Exception("Save folder combobox handle not found");
-                    }
-
-                    monitorFolderPath = GetCurrentSaveFolder();
-                    
-                    if (string.IsNullOrEmpty(monitorFolderPath))
-                    {
-                        throw new Exception("Unable to determine path for save folder. Make sure save folder path is selected in Imaging Edge Remote app");
-                    }
-                }
-                catch (Exception e)
-                {
-                    throw  new Exception("Unable to locate save folder combobox in Imaging Edge Remote app main window",e);
-                }
-
-                //create save folder if not exists
-                if (Directory.Exists(monitorFolderPath) == false)
-                {
-                    Directory.CreateDirectory(monitorFolderPath);
-                }
-
-                //create file system watcher to monitor save folder
-                _fileSystemWatcher = new FileSystemWatcher(monitorFolderPath);
-                _fileSystemWatcher.NotifyFilter = NotifyFilters.FileName;
-                _fileSystemWatcher.Created += FileSystemWatcherOnCreated;
-                _fileSystemWatcher.EnableRaisingEvents = false;
 
             }
             catch (Exception e)
             {
-                throw new ASCOM.NotConnectedException("Unable to communicate with Imaging Edge Remote app. Ensure the app is running and camera is connected.", e);
+                throw new ASCOM.NotConnectedException("Unable to communicate with Imaging Edge Remote app. Ensure the app is running and camera is connected." + e.Message, e);
             }
+        }
 
-            IsConnected = true;
+        private void NoCameraConnectedPressOk()
+        {
+            PressButton(WindowType.noCameraConnected, "ok");
+        }
+        
+        private void CannotAccessFolderPressOk()
+        {
+            PressButton(WindowType.cannotAccessFolder, "ok");
+        }
+
+        private void CannotCreateFolderPressOk()
+        {
+            // user has to change the folder in the remote app
+            Thread.Sleep(10000);
+            PressButton(WindowType.cannotCreateFolder, "ok");
+        }
+
+        private void SelectFirstCamera()
+        {
+            //PressButton(WindowType.selectCamera, "refresh");
+            // wait for user to select camera
+            Thread.Sleep(10000);
+            //ListViewControl.SelectFirstItem(GetHandle(WindowType.selectCamera, "listView"));
+        }
+
+        private void StartImaging()
+        {
+            if(_fileSystemWatcher != null)
+                createFileSystemWatchers();
+        }
+
+        private void populateWindowHandles()
+        {
+            var handleTree = BuildRemoteWindowHandlesTree();
+            foreach (var windowObject in Windows.Where(x => x.WindowType == whatsTheCurrentWindow()).First().WindowObjects)
+            {
+                try
+                {
+                    windowObject.Handle = getValueFromTree(handleTree.Children[windowObject.ChildIndex.First()], windowObject.ChildIndex);
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("could not locate "+ windowObject.Name +" in tree", e);
+                }
+            }
+        }
+
+        private WindowType whatsTheCurrentWindow()
+        {
+            // There can be multiple main remote windows.
+            var remoteWindows = GetWindows.GetOpenWindows().Where(x => x.Value == "Remote").ToList();
+            if (remoteWindows.Count == 0)
+                return WindowType.noWindow;
+
+            foreach (var remoteWindow in remoteWindows)
+            {
+                var handleTree = BuildWindowHandlesTree(remoteWindow.Key);
+                foreach (var window in Windows)
+                {
+                    if(DoWindowObjectsMatch(handleTree, window))
+                        return window.WindowType;
+                }
+            }
+            throw new Exception("Unknown Window");
+        }
+
+        bool DoWindowObjectsMatch(TreeNode<IntPtr> handleTree, Window window)
+        {
+            foreach (var windowObject in window.WindowObjects)
+            {
+                IntPtr handle = getValueFromTree(handleTree.Children[windowObject.ChildIndex.First()], windowObject.ChildIndex);
+                var test = GetWindowTitle(handle);
+                if(windowObject.ExactWindowText != "")
+                    if (test != windowObject.ExactWindowText)
+                        return false;
+            }
+            return true;
+        }
+
+        private string GetWindowTitle(IntPtr hWnd)
+        {
+            Dictionary<IntPtr, string> windows = new Dictionary<IntPtr, string>();
+            int length = GetWindowTextLength(hWnd);
+            if (length == 0) return "";
+            StringBuilder builder = new StringBuilder(length);
+            GetWindowText(hWnd, builder, length + 1);
+            return builder.ToString();
+        }
+
+        private IntPtr getValueFromTree(TreeNode<IntPtr>windowTree, List<int> childIds)
+        {
+            if(childIds.Count > 1)
+            {
+                var newChildIds = new List<int>(childIds);
+                newChildIds.RemoveAt(0);
+                return getValueFromTree(windowTree.Children[newChildIds.First()], newChildIds);
+            }
+            return windowTree.Value;
+        }
+
+        private void createFileSystemWatchers()
+        {
+            var monitorFolderPath = GetCurrentSaveFolder();
+
+            //create save folder if not exists
+            if (Directory.Exists(monitorFolderPath) == false)
+                Directory.CreateDirectory(monitorFolderPath);
+            
+            //create file system watcher to monitor save folder
+            _fileSystemWatcher = new FileSystemWatcher(monitorFolderPath);
+            _fileSystemWatcher.NotifyFilter = NotifyFilters.FileName;
+            _fileSystemWatcher.Created += FileSystemWatcherOnCreated;
+            _fileSystemWatcher.EnableRaisingEvents = false;
         }
 
         public void Disconnect()
         {
-            _hWindowTree = null;
-            _shutterButtonHandle = IntPtr.Zero;
-            _shutterSpeedLabelHandle = IntPtr.Zero;
-            _shutterSpeedIncreaseButtonHandle = IntPtr.Zero;
-            _shutterSpeedDecreaseButtonHandle = IntPtr.Zero;
-            _isoLabelHandle = IntPtr.Zero;
-            _isoIncreaseButtonHandle= IntPtr.Zero;
-            _isoDecreaseButtonHandle= IntPtr.Zero;
+            Windows = null;
 
             if (_fileSystemWatcher != null)
             {
                 _fileSystemWatcher.Dispose();
                 _fileSystemWatcher = null;
             }
-            
 
             IsConnected = false;
         }
-
-        private BackgroundWorker _exposureBackgroundWorker;
-
-        private FileSystemWatcher _fileSystemWatcher;
-
-        private bool exposureInProgress = false;
-        private static object _lock = new object();
 
         private void SetISO(short shortRequestedISO)
         {
@@ -429,10 +544,10 @@ namespace ASCOM.Sony
             }
         }
 
-        public void AdjustShutterSpeed(string requestedShutterSpeed, string currentShutterSpeedg)
+        public void AdjustShutterSpeed(string requestedShutterSpeed, string currentShutterSpeed)
         {
             var requestedIndex = Array.FindIndex(_cameraModel.ShutterSpeeds, item => item.Name == requestedShutterSpeed);
-            var currentIndex = Array.FindIndex(_cameraModel.ShutterSpeeds, item => item.Name == currentShutterSpeedg);
+            var currentIndex = Array.FindIndex(_cameraModel.ShutterSpeeds, item => item.Name == currentShutterSpeed);
 
             var shutterAdjustment = requestedIndex - currentIndex;
 
@@ -534,8 +649,8 @@ namespace ASCOM.Sony
                 if (exposureInProgress == false)
                 {
                     exposureInProgress = true;
-                    PostMessage(_shutterButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-                    PostMessage(_shutterButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                    PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+                    PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
                 }
             }
         }
@@ -549,8 +664,8 @@ namespace ASCOM.Sony
                     exposureInProgress = false;
                     if (shutter && _cameraModel.CanStopExposure)
                     {
-                        PostMessage(_shutterButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-                        PostMessage(_shutterButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                        PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+                        PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
                     }
                     else
                     {
@@ -564,7 +679,7 @@ namespace ASCOM.Sony
         {
             if (IsConnected == false)
                 throw new InvalidOperationException("Camera not connected.");
-            return GetWindowText(_isoLabelHandle);
+            return GetWindowText(GetHandle(WindowType.main, "isoLabel"));
         }
 
         private void IncreaseISO()
@@ -575,8 +690,8 @@ namespace ASCOM.Sony
             if (GetCurrentISO() == _cameraModel.Gains.Last().ToString())
                 return;
 
-            PostMessage(_isoIncreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(_isoIncreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "isoIncreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "isoIncreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update ISO
             Thread.Sleep(200);
@@ -590,8 +705,8 @@ namespace ASCOM.Sony
             if (GetCurrentISO() == _cameraModel.Gains.First().ToString())
                 return;
 
-            PostMessage(_isoDecreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(_isoDecreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "isoDecreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "isoDecreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update ISO
             Thread.Sleep(200);
@@ -605,8 +720,8 @@ namespace ASCOM.Sony
             if (GetCurrentShutterSpeed() == _cameraModel.ShutterSpeeds.Last().Name)
                 return;
 
-            PostMessage(_shutterSpeedIncreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(_shutterSpeedIncreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "shutterSpeedIncreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "shutterSpeedIncreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update Shutter Speed
             Thread.Sleep(200);
@@ -620,8 +735,8 @@ namespace ASCOM.Sony
             if (GetCurrentShutterSpeed() == _cameraModel.ShutterSpeeds.First().Name)
                 return;
 
-            PostMessage(_shutterSpeedDecreaseButtonHandle, WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(_shutterSpeedDecreaseButtonHandle, WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "shutterSpeedDecreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(GetHandle(WindowType.main, "shutterSpeedDecreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
 
             //TODO: properly wait sony remote app to update Shutter Speed
             Thread.Sleep(200);
@@ -631,12 +746,13 @@ namespace ASCOM.Sony
         {
             if (IsConnected == false)
                 throw new InvalidOperationException("Camera not connected.");
-            return GetWindowText(_shutterSpeedLabelHandle);
+            return GetWindowText(GetHandle(WindowType.main, "shutterSpeedLabel"));
         }
 
         private string GetCurrentSaveFolder()
         {
-            int length = SendMessage(_folderComboboxHandle, WM_GETTEXTLENGTH, 0, 0).ToInt32();
+            
+            int length = SendMessage(GetHandle(WindowType.main, "folderCombobox"), WM_GETTEXTLENGTH, 0, 0).ToInt32();
 
             // If titleSize is 0, there is no title so return an empty string (or null)
             if (length == 0)
@@ -644,30 +760,45 @@ namespace ASCOM.Sony
  
             StringBuilder sbBuffer = new StringBuilder(length + 1);
 
-            SendMessage(_folderComboboxHandle, WM_GETTEXT, length + 1, sbBuffer);
+            SendMessage(GetHandle(WindowType.main, "folderCombobox"), WM_GETTEXT, length + 1, sbBuffer);
 
             return sbBuffer.ToString();
         }
 
+        private static TreeNode<IntPtr> BuildRemoteWindowHandlesTree()
+        {
+            IntPtr window = (IntPtr)FindWindow(null, "Remote");
+            return BuildWindowHandlesTree(window);
+        }
+
         private static TreeNode<IntPtr> BuildWindowHandlesTree(IntPtr window)
         {
-            TreeNode<IntPtr> handlesTree = new TreeNode<IntPtr>(window);
-
-            GCHandle gcHandlesTree = GCHandle.Alloc(handlesTree);
-            IntPtr pointerHandlesTree = GCHandle.ToIntPtr(gcHandlesTree);
-
             try
             {
-                EnumWindowProc childProc = new EnumWindowProc(EnumWindowTree);
-                EnumChildWindows(window, childProc, pointerHandlesTree);
-            }
-            finally
-            {
-                gcHandlesTree.Free();
-            }
-            return handlesTree;
+                TreeNode<IntPtr> handlesTree = new TreeNode<IntPtr>(window);
 
+                GCHandle gcHandlesTree = GCHandle.Alloc(handlesTree);
+                IntPtr pointerHandlesTree = GCHandle.ToIntPtr(gcHandlesTree);
+
+                try
+                {
+                    EnumWindowProc childProc = new EnumWindowProc(EnumWindowTree);
+                    EnumChildWindows(window, childProc, pointerHandlesTree);
+                }
+                finally
+                {
+                    gcHandlesTree.Free();
+                }
+
+                return handlesTree;
+            }
+            catch (Exception e)
+            {
+                throw new Exception("Unable to build control hierarchy of Imaging Edge Remote app main window.", e);
+            }
         }
+
+
 
         private static bool EnumWindowTree(IntPtr hWnd, IntPtr lParam)
         {

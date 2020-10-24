@@ -67,7 +67,7 @@ namespace ASCOM.Sony
 
             if (_cameraState != CameraStates.cameraIdle) throw new InvalidOperationException("Cannot start exposure - camera is not idle");
 
-            tl.LogMessage("StartExposure", $"Duration: {Duration} s. ISO: {Gains[Gain]}. {(Light ? "Light" : "Dark")} frame.");
+            // tl.LogMessage("StartExposure", $"Duration: {Duration} s. ISO: {Gains[Gain]}. {(Light ? "Light" : "Dark")} frame.");
 
             cameraImageReady = false;
             cameraImageArray = null;
@@ -146,6 +146,9 @@ namespace ASCOM.Sony
 
         public void AbortExposure()
         {
+            if (!cameraModel.CanStopExposure)
+                throw new ASCOM.MethodNotImplementedException("Cannot Stop Exposure, CanStopExposure set to false");
+
             CheckConnected("Camera not connected");
             tl.LogMessage("AbortExposure","");
             if (_cameraState == CameraStates.cameraExposing)
@@ -159,7 +162,7 @@ namespace ASCOM.Sony
         public void StopExposure()
         {
             if (!cameraModel.CanStopExposure)
-                throw new ASCOM.MethodNotImplementedException("Cannot AbortExposure, CanStopExposure set to false");
+                throw new ASCOM.MethodNotImplementedException("Cannot Abort Exposure, CanStopExposure set to false");
 
             CheckConnected("Camera not connected");
             tl.LogMessage("StopExposure", "");

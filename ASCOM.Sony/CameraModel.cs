@@ -1,29 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Linq;
-using System.Text;
-using ASCOM.Utilities;
-using Newtonsoft.Json;
 
 namespace ASCOM.Sony
 {
-    public class ShutterSpeed
+    public class CameraData
     {
-        public double DurationSeconds { get; set; }
-        public string Name { get; set; }
-
-        public ShutterSpeed()
-        {
-
-        }
-
-        public ShutterSpeed(string name, double durationSeconds)
-        {
-            Name = name;
-            DurationSeconds = durationSeconds;
-        }
+        public CameraModel[] CameraModels { get; set; }
     }
 
     public class Sensor
@@ -127,10 +109,10 @@ namespace ASCOM.Sony
 
         public short[] Gains { get; set; }
 
+        public string[] AvaiableShutterSpeeds { get; set; }
+
         public ShutterSpeed[] ShutterSpeeds { get; set; }
         
         public double ExposureResolution { get; set; }
-                
-        public static CameraModel[] Models { get; set; }
     }
 }

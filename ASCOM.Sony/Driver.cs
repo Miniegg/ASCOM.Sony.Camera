@@ -42,8 +42,6 @@ using Newtonsoft.Json;
 
 namespace ASCOM.Sony
 {
-    
-
     /// <summary>
     /// ASCOM Camera Driver for Sony Cameras
     /// </summary>
@@ -75,7 +73,12 @@ namespace ASCOM.Sony
         internal static string traceStateProfileName = "Trace Level";
         internal static string traceStateDefault = "false";
 
+        internal static CameraModel[] cameraModels;
         internal static CameraModel cameraModel;
+        internal static ShutterSpeed[] shutterSpeedMap;
+
+        internal static string remoteAppPath = @"D:\SonyImagaingEdge\Sony\Remote.exe";
+
         internal static short iso;
         internal static ImageFormat imageFormat;
         
@@ -114,6 +117,9 @@ namespace ASCOM.Sony
             // or call a different dialog if connected
             if (IsConnected)
                 System.Windows.Forms.MessageBox.Show("Already connected, just press OK");
+
+
+            DeserializeModelsFromJson();
 
             using (SetupDialogForm F = new SetupDialogForm())
             {
@@ -355,7 +361,7 @@ namespace ASCOM.Sony
 
                 string cameraModelID = driverProfile.GetValue(driverID, cameraModelProfileName, string.Empty, "");
 
-                var firstCameraModel = CameraModel.Models.FirstOrDefault();
+               var firstCameraModel = cameraModels.FirstOrDefault();
 
                 if (string.IsNullOrEmpty(cameraModelID))
                 {
@@ -363,7 +369,7 @@ namespace ASCOM.Sony
                 }
                 else
                 {
-                    cameraModel = CameraModel.Models.FirstOrDefault(m => m.ID == cameraModelID) ?? firstCameraModel;
+                    cameraModel = cameraModels.FirstOrDefault(m => m.ID == cameraModelID) ?? firstCameraModel;
                 }
 
                 string isoAsString = driverProfile.GetValue(driverID, isoProfileName, string.Empty, cameraModel.Gains.First().ToString());
@@ -372,7 +378,6 @@ namespace ASCOM.Sony
 
                 imageFormat = (ImageFormat) Enum.Parse(typeof(ImageFormat), driverProfile.GetValue(driverID, imageFormatProfileName, string.Empty, ImageFormat.CFA.ToString()));
                 autoDeleteImageFile = Boolean.Parse(driverProfile.GetValue(driverID,autoDeleteImageFileProfileName, string.Empty,false.ToString()));
-
 
                 cameraNumX = cameraModel.Sensor.GetReadoutWidth(imageFormat);
                 cameraNumY = cameraModel.Sensor.GetReadoutHeight(imageFormat);
@@ -425,9 +430,24 @@ namespace ASCOM.Sony
 
             try
             {
-                string jsonPath = Path.Combine(AssemblyDirectory, "cameramodels.json");
-                string jsonModels = File.ReadAllText(jsonPath);
-                CameraModel.Models = JsonConvert.DeserializeObject<CameraModel[]>(jsonModels);
+                string cameraDataJsonPath = Path.Combine(AssemblyDirectory, "cameramodels.json");
+                string cameraDataJsonModels = File.ReadAllText(cameraDataJsonPath);
+                cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(cameraDataJsonModels);
+
+                // need the shutter speed map for each model, dont want to repeat the JSON,
+                string shutterSpeedMapJsonPath = Path.Combine(AssemblyDirectory, "shutterSpeedMap.json");
+                string shutterSpeedMapJsonModels = File.ReadAllText(shutterSpeedMapJsonPath);
+                shutterSpeedMap = JsonConvert.DeserializeObject<ShutterSpeed[]>(shutterSpeedMapJsonModels);
+
+                foreach (var cameraModel in cameraModels)
+                {
+                    var shutterSpeeds = new List<ShutterSpeed>();
+                    foreach (var avaiableShutterSpeed in cameraModel.AvaiableShutterSpeeds)
+                    {
+                        shutterSpeeds.Add(shutterSpeedMap.Where(SSM => SSM.Name == avaiableShutterSpeed).First());
+                    }
+                    cameraModel.ShutterSpeeds = shutterSpeeds.ToArray();
+                }
             }
             catch (Exception e)
             {

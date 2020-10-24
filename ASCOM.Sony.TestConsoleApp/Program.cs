@@ -10,16 +10,33 @@ using System.Windows.Media.Imaging;
 using Newtonsoft.Json;
 using System.Threading;
 using Microsoft.Win32;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace ASCOM.Sony.TestConsoleApp
 {
     public class Program
     {
+        [DllImport("user32.dll")]
+        static extern IntPtr GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
         static void Main(string[] args)
         {
             // make sure to build+install ASCOM driver first
             // use the ASCOM Diagnostics utility to choose the correct camera
             var cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("cameramodels.json"));
+            var shutterSpeedMap = JsonConvert.DeserializeObject<ShutterSpeed[]>(File.ReadAllText("shutterSpeedMap.json"));
+            
+            foreach (var cameraModel in cameraModels)
+            {
+                var shutterSpeeds = new List<ShutterSpeed>();
+                foreach (var avaiableShutterSpeed in cameraModel.AvaiableShutterSpeeds)
+                {
+                    shutterSpeeds.Add(shutterSpeedMap.Where(SSM => SSM.Name == avaiableShutterSpeed).First());
+                }
+                cameraModel.ShutterSpeeds = shutterSpeeds.ToArray();
+            }
+
             var camera = new Camera();
             camera.Connected = true;
 
