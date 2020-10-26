@@ -379,8 +379,8 @@ namespace ASCOM.Sony
                 imageFormat = (ImageFormat) Enum.Parse(typeof(ImageFormat), driverProfile.GetValue(driverID, imageFormatProfileName, string.Empty, ImageFormat.CFA.ToString()));
                 autoDeleteImageFile = Boolean.Parse(driverProfile.GetValue(driverID,autoDeleteImageFileProfileName, string.Empty,false.ToString()));
 
-                cameraNumX = cameraModel.Sensor.GetReadoutWidth(imageFormat);
-                cameraNumY = cameraModel.Sensor.GetReadoutHeight(imageFormat);
+                _cameraNumX = cameraModel.Sensor.GetReadoutWidth(imageFormat);
+                _cameraNumY = cameraModel.Sensor.GetReadoutHeight(imageFormat);
             }
         }
 

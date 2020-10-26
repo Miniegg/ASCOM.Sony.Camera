@@ -51,7 +51,8 @@ namespace ASCOM.Sony
         noCameraConnected,
         selectCamera,
         main,
-        noWindow
+        noWindow,
+        unknown
     }
     
     public class Window
@@ -153,6 +154,10 @@ namespace ASCOM.Sony
         private FileSystemWatcher _fileSystemWatcher;
 
         private bool exposureInProgress = false;
+        private short _lastIso;
+        private double _lastDurationSeconds = 0;
+        private bool _lastEnableBulbMode = false;
+
         private static object _lock = new object();
 
         public ImagingEdgeRemoteInterop(CameraModel cameraModel, ImageFormat imageFormat, bool autoDeleteImageFile)
@@ -257,14 +262,28 @@ namespace ASCOM.Sony
                 string filePath = e.FullPath;
                 //ensure file is completely saved to hard disk
 
-                while (CanAccessFile(filePath) == false)
+                var fileReadRetries = 6;
+                while ((CanAccessFile(filePath) == false) && fileReadRetries > 0)
                 {
+                    fileReadRetries--;
                     Thread.Sleep(500);
                 }
+                // ToDo need to get a new image
 
-                Thread.Sleep(1000);//for some reason we need to wait here for file lock to be released on image file
-
-                Array imageArray = ReadCameraImageArray(filePath);
+                Thread.Sleep(3000);//for some reason we need to wait here for file lock to be released on image file
+                
+                var fi = new FileInfo(filePath);
+                
+                Array imageArray;
+                try
+                {
+                    imageArray = ReadCameraImageArray(filePath);
+                }
+                catch (Exception exc)
+                {
+                    StartExposure(_lastIso, _lastDurationSeconds, _lastEnableBulbMode);
+                    return;
+                }
 
                 if (_autoDeleteImageFile)
                 {
@@ -302,59 +321,67 @@ namespace ASCOM.Sony
         {
             try
             {
-                var hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
-                if (hRemoteAppWindow == IntPtr.Zero)
-                {
-                    Process.Start(@"D:\SonyImagaingEdge\Sony\Remote.exe");
-
-                    var checkWindowAttempts = 10;
-                    var msBetweenCheck = 500;
-                    for (int i = 0; i < checkWindowAttempts; i++)
-                    {
-                        hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
-                        if (hRemoteAppWindow == IntPtr.Zero)
-                            Thread.Sleep(msBetweenCheck);
-                        else
-                            break;
-                    }
-                }
-                if (hRemoteAppWindow == IntPtr.Zero)
-                    throw new Exception("Unable to locate Imaging Edge Remote app main window.");
-
-                while (true)
-                {
-                    populateWindowHandles();
-                    switch (whatsTheCurrentWindow())
-                    {
-                        case WindowType.noCameraConnected:
-                            NoCameraConnectedPressOk();
-                            break;
-                        case WindowType.selectCamera:
-                            SelectFirstCamera();
-                            break;
-                        case WindowType.main:
-                            StartImaging();
-                            IsConnected = true;
-                            return;
-                        case WindowType.cannotAccessFolder:
-                            CannotAccessFolderPressOk();
-                            return;
-                        case WindowType.cannotCreateFolder:
-                            CannotCreateFolderPressOk();
-                            return;
-                        case WindowType.noWindow:
-                            Thread.Sleep(500); // chill, sometimes there are no active remote windows when loading the program
-                            return;
-                        default:
-                            throw new Exception("Unknown window");
-                    }
-                    Thread.Sleep(500);
-                }
-
+                startRemoteApp();
+                remoteAppStateMachine();
             }
             catch (Exception e)
             {
                 throw new ASCOM.NotConnectedException("Unable to communicate with Imaging Edge Remote app. Ensure the app is running and camera is connected." + e.Message, e);
+            }
+        }
+
+        private void startRemoteApp()
+        {
+            var hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
+            if (hRemoteAppWindow == IntPtr.Zero)
+            {
+                Process.Start(@"D:\SonyImagaingEdge\Sony\Remote.exe");
+
+                var checkWindowAttempts = 10;
+                var msBetweenCheck = 500;
+                for (int i = 0; i < checkWindowAttempts; i++)
+                {
+                    hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
+                    if (hRemoteAppWindow == IntPtr.Zero)
+                        Thread.Sleep(msBetweenCheck);
+                    else
+                        break;
+                }
+            }
+            if (hRemoteAppWindow == IntPtr.Zero)
+                throw new Exception("Unable to locate Imaging Edge Remote app main window.");
+        }
+
+        private void remoteAppStateMachine()
+        {
+            while (true)
+            {
+                populateWindowHandles();
+                switch (whatsTheCurrentWindow())
+                {
+                    case WindowType.main:
+                        StartImaging();
+                        IsConnected = true;
+                        return;
+                    case WindowType.noCameraConnected:
+                        NoCameraConnectedPressOk();
+                        break;
+                    case WindowType.selectCamera:
+                        SelectFirstCamera();
+                        break;
+                    case WindowType.cannotAccessFolder:
+                        CannotAccessFolderPressOk();
+                        break;
+                    case WindowType.cannotCreateFolder:
+                        CannotCreateFolderPressOk();
+                        break;
+                    case WindowType.noWindow:
+                        // chill, sometimes there are no active remote windows when loading the program
+                        break;
+                    default:
+                        throw new Exception("Unknown window");
+                }
+                Thread.Sleep(500);
             }
         }
 
@@ -385,18 +412,22 @@ namespace ASCOM.Sony
 
         private void StartImaging()
         {
-            if(_fileSystemWatcher != null)
+            // unless initialising dont need to do anything!
+            if (_fileSystemWatcher == null)
                 createFileSystemWatchers();
         }
 
         private void populateWindowHandles()
         {
-            var handleTree = BuildRemoteWindowHandlesTree();
-            foreach (var windowObject in Windows.Where(x => x.WindowType == whatsTheCurrentWindow()).First().WindowObjects)
+            var currentWindow = whatsTheCurrentWindow();
+            if (currentWindow == WindowType.noWindow)
+                return;
+            
+            foreach (var windowObject in Windows.Where(x => x.WindowType == whatsTheCurrentWindow()).FirstOrDefault().WindowObjects)
             {
                 try
                 {
-                    windowObject.Handle = getValueFromTree(handleTree.Children[windowObject.ChildIndex.First()], windowObject.ChildIndex);
+                    windowObject.Handle = getValueFromTree(BuildRemoteWindowHandlesTree().Children[windowObject.ChildIndex.First()], windowObject.ChildIndex);
                 }
                 catch (Exception e)
                 {
@@ -412,16 +443,28 @@ namespace ASCOM.Sony
             if (remoteWindows.Count == 0)
                 return WindowType.noWindow;
 
+            if (remoteWindows.Count == 1)
+                return FindMatchingWindow(remoteWindows.First().Key);
+
+            // if there are 2 windows check if its the 'cannot access folder' window as this has a higher priority than the others.
+            var windowList = new List<WindowType>();
             foreach (var remoteWindow in remoteWindows)
-            {
-                var handleTree = BuildWindowHandlesTree(remoteWindow.Key);
-                foreach (var window in Windows)
-                {
-                    if(DoWindowObjectsMatch(handleTree, window))
-                        return window.WindowType;
-                }
-            }
+                windowList.Add(FindMatchingWindow(remoteWindows.First().Key));
+            if (windowList.Contains(WindowType.cannotAccessFolder))
+                return WindowType.cannotAccessFolder;
+
             throw new Exception("Unknown Window");
+        }
+
+        private WindowType FindMatchingWindow(IntPtr remoteWindow)
+        {
+            var handleTree = BuildWindowHandlesTree(remoteWindow);
+            foreach (var window in Windows)
+            {
+                if (DoWindowObjectsMatch(handleTree, window))
+                    return window.WindowType;
+            }
+            return WindowType.unknown;
         }
 
         bool DoWindowObjectsMatch(TreeNode<IntPtr> handleTree, Window window)
@@ -568,15 +611,18 @@ namespace ASCOM.Sony
 		
         public void StartExposure(short iso, double durationSeconds, bool enableBulbMode = false)
         {
+            // make sure the remote app connected and in the correct state before trying an exposure
+            Connect();
+
+            _lastIso = iso;
+            _lastDurationSeconds = durationSeconds;
+            _lastEnableBulbMode = enableBulbMode;
+            
             if (IsConnected == false)
-            {
                 throw new ASCOM.NotConnectedException();
-            }
 
             if (exposureInProgress)
-            {
                 throw new ASCOM.InvalidOperationException("Exposure already in progress");
-            }
 
             _exposureBackgroundWorker = new BackgroundWorker() { WorkerReportsProgress = false, WorkerSupportsCancellation = true };
 
@@ -588,23 +634,7 @@ namespace ASCOM.Sony
 
                 if (args.Cancel == false)
                 {
-                    try
-                    {
-                        BeginExposure();
-                        _remainingExposure = (int)durationSeconds;
-                        while (_remainingExposure > 0)
-                        {
-                            Thread.Sleep(1000);
-                            _remainingExposure--;
-                        }
-                    }
-                    finally
-                    {
-                        lock (_lock)
-                        {
-                            exposureInProgress = false;
-                        }
-                    }
+                    TryTakePhoto((int)durationSeconds);
                 }
             }));
 
@@ -618,6 +648,34 @@ namespace ASCOM.Sony
             }));
 
             _exposureBackgroundWorker.RunWorkerAsync();
+        }
+
+        private void TryTakePhoto(int durationSeconds)
+        {
+            // make sure we're on the main window
+            Connect();
+
+            try
+            {
+                BeginExposure();
+                _remainingExposure = durationSeconds;
+                while (_remainingExposure > 0)
+                {
+                    Thread.Sleep(1000);
+                    _remainingExposure--;
+                }
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    exposureInProgress = false;
+                    if(whatsTheCurrentWindow() == WindowType.cannotAccessFolder)
+                    {
+                        TryTakePhoto(durationSeconds);
+                    }
+                }
+            }
         }
 
         public void AbortExposure()

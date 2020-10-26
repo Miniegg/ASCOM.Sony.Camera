@@ -23,20 +23,7 @@ namespace ASCOM.Sony.TestConsoleApp
         static void Main(string[] args)
         {
             // make sure to build+install ASCOM driver first
-            // use the ASCOM Diagnostics utility to choose the correct camera
-            var cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("cameramodels.json"));
-            var shutterSpeedMap = JsonConvert.DeserializeObject<ShutterSpeed[]>(File.ReadAllText("shutterSpeedMap.json"));
-            
-            foreach (var cameraModel in cameraModels)
-            {
-                var shutterSpeeds = new List<ShutterSpeed>();
-                foreach (var avaiableShutterSpeed in cameraModel.AvaiableShutterSpeeds)
-                {
-                    shutterSpeeds.Add(shutterSpeedMap.Where(SSM => SSM.Name == avaiableShutterSpeed).First());
-                }
-                cameraModel.ShutterSpeeds = shutterSpeeds.ToArray();
-            }
-
+            // use the ASCOM Diagnostics utility to choose the correct camera     
             var camera = new Camera();
             camera.Connected = true;
 
@@ -62,107 +49,7 @@ namespace ASCOM.Sony.TestConsoleApp
                 } while (true);
             }
         }
-
-
-/*
-        static void Main(string[] args)
-        {
-            var cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("cameramodels.json"));
-
-            SonyCamera camera = new SonyCamera(cameraModels.First(m => m.ID == "SLTA99"), ImageFormat.CFA, false);
-
-            camera.ExposureReady += Camera_ExposureReady;
-            camera.ExposureCompleted += Camera_ExposureCompleted;
-
-            Console.WriteLine("Press S to take exposure.\nPress R to read ARW file and save to grayscale TIFF.\nPress D to read ARW file and save to color TIFF.\nPress J to read JPEG file and save to color TIFF.\nPress E to exit program.");
-            do
-            {
-                var key = Console.ReadKey(true);
-                if (key.Key == ConsoleKey.S)
-                {
-                    if (camera.IsConnected() == false)
-                    {
-                        camera.Connect();
-                    }
-                    camera.StartExposure(400, 3, true);
-                }
-                else if (key.Key == ConsoleKey.R)
-                {
-                    ImageDataProcessor dataProcessor = new ImageDataProcessor();
-
-                    Console.Write("Reading RAW file to array ...");
-                    uint[,] array = dataProcessor.ReadRaw("D:\\astrophoto\\test\\test.ARW");
-                    Console.WriteLine(" Done.");
-
-                    Console.WriteLine($"Array length: {array.LongLength*4} bytes");
-
-                    WriteImageStatistics(dataProcessor, array);
-
-                    Console.Write("Saving to tiff...");
-                    SaveToGrayscaleTiff("D:\\astrophoto\\test\\grayscale.tiff", array);
-                    Console.WriteLine(" Done.");
-                }
-                else if(key.Key == ConsoleKey.D)
-                {
-                    ImageDataProcessor dataProcessor = new ImageDataProcessor();
-
-                    Console.Write("Reading RAW file and debayer to array ...");
-                    uint[,,] array = dataProcessor.ReadAndDebayerRaw("D:\\astrophoto\\test\\test.ARW");
-                    Console.WriteLine(" Done.");
-
-                    Console.WriteLine($"Array length: {array.LongLength*4} bytes");
-
-                    WriteImageStatistics(dataProcessor, array);
-
-                    Console.Write("Saving to tiff...");
-                    SaveToColorTiff("D:\\astrophoto\\test\\color.tiff", array);
-                    Console.WriteLine(" Done.");
-                }
-                else if (key.Key == ConsoleKey.J)
-                {
-                    ImageDataProcessor dataProcessor = new ImageDataProcessor();
-
-                    Console.Write("Reading JPEG file array ...");
-                    uint[,,] array = dataProcessor.ReadJpeg("D:\\astrophoto\\test\\test.JPG");
-                    Console.WriteLine(" Done.");
-
-                    Console.WriteLine($"Array length: {array.LongLength} bytes");
-
-                    WriteImageStatistics(dataProcessor, array);
-
-                    Console.Write("Saving to tiff...");
-
-                    SaveToColor8bitTiff("D:\\astrophoto\\test\\jpeg.tiff", array);
-                        
-                    
-                    Console.WriteLine(" Done.");
-                }
-                else if (key.Key == ConsoleKey.A)
-                {
-                    Console.Write("Writing camera models to json...");
-                    //serialize CameraModel to JSON
-
-                    CameraModel.Models = new CameraModel[]
-                    {
-                        _sltA99
-                    };
-
-                    string json = JsonConvert.SerializeObject(CameraModel.Models);
-                    File.WriteAllText("test.json", json);
-                    Console.WriteLine(" Done.");
-
-                    Console.Write("Writing camera models from json...");
-                    var models = JsonConvert.DeserializeObject<CameraModel[]>(File.ReadAllText("test.json"));
-                    Console.WriteLine($" Done. Read {models.Length} models.");
-
-                }
-                else if (key.Key == ConsoleKey.E)
-                {
-                    break;
-                }
-            } while (true);
-        }
-*/
+        
 
         private static void WriteImageStatistics(ImageDataProcessor dataProcessor, Array array)
         {
