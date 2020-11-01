@@ -247,6 +247,9 @@ namespace ASCOM.Sony
 
         private IntPtr GetHandle(WindowType windowType, string handleName)
         {
+            if(Windows == null)
+                CreateWindowObjects();
+
             Window window = Windows.Where(x => x.WindowType == windowType).FirstOrDefault();
             WindowObject windowObject = window.WindowObjects.Where(x => x.Name == handleName).FirstOrDefault();
             return windowObject.Handle;
@@ -620,6 +623,7 @@ namespace ASCOM.Sony
                         
             while (requestedShutterSpeed != GetCurrentShutterSpeed())
             {
+                _traceLogger.LogMessage("DBUG-SetShutterSpeed", "requestedShutterSpeed = " + requestedShutterSpeed + " CurrentShutterSpeed = "  + GetCurrentShutterSpeed());
                 AdjustShutterSpeed(requestedShutterSpeed, GetCurrentShutterSpeed());
             }
         }
@@ -630,6 +634,7 @@ namespace ASCOM.Sony
             var currentIndex = Array.FindIndex(_cameraModel.ShutterSpeeds, item => item.Name == currentShutterSpeed);
 
             var shutterAdjustment = requestedIndex - currentIndex;
+            _traceLogger.LogMessage("DBUG-AdjustShutterSpeed", "shutterAdjustment " + shutterAdjustment + " = " + requestedIndex + " - " + currentIndex);
 
             while (shutterAdjustment != 0)
             {
@@ -658,7 +663,8 @@ namespace ASCOM.Sony
             _lastIso = iso;
             _lastDurationSeconds = durationSeconds;
             _lastEnableBulbMode = enableBulbMode;
-            
+            _traceLogger.LogMessage("DBUG-StartExposure", "ISO = "+ _lastIso + " ShutterSpeed = " + _lastDurationSeconds + " BulbMode = " + _lastEnableBulbMode);
+
             if (IsConnected == false)
                 throw new ASCOM.NotConnectedException();
 
