@@ -1,14 +1,14 @@
-﻿using System;
+﻿using ASCOM.Utilities;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace ASCOM.Sony
 {
@@ -87,6 +87,14 @@ namespace ASCOM.Sony
             ChildIndex = childIndex;
             ExactWindowText = exactWindowText;
         }
+
+        public WindowObject(string name, List<int> childIndex, string exactWindowText = "")
+        {
+            Name = name;
+            Handle = new IntPtr();
+            ChildIndex = childIndex;
+            ExactWindowText = exactWindowText;
+        }
     }
 
 
@@ -123,17 +131,20 @@ namespace ASCOM.Sony
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessage", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        [DllImport("user32.dll", EntryPoint = "SendMessage", CharSet = CharSet.Auto)]
         public static extern bool SendMessage(IntPtr hWnd, uint Msg, int wParam, StringBuilder lParam);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SendMessage(IntPtr hWnd, int Msg, int wparam, int lparam);
-        
+
+        [DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
         const int WM_GETTEXT = 0x000D;
         const int WM_GETTEXTLENGTH = 0x000E;
         const int WM_LBUTTONDOWN = 0x201;
         const int WM_LBUTTONUP = 0x202;
-        const int BM_CLICK = 0x00F5;
+        const int BM_CLICK = 0x00F5; // simulates the mouse press down and let go
         #endregion
 
         private List<Window> Windows;
@@ -154,14 +165,18 @@ namespace ASCOM.Sony
         private FileSystemWatcher _fileSystemWatcher;
 
         private bool exposureInProgress = false;
-        private short _lastIso;
+        private short _lastIso = 100;
         private double _lastDurationSeconds = 0;
         private bool _lastEnableBulbMode = false;
 
+        private TraceLogger _traceLogger;
+
         private static object _lock = new object();
 
-        public ImagingEdgeRemoteInterop(CameraModel cameraModel, ImageFormat imageFormat, bool autoDeleteImageFile)
+        public ImagingEdgeRemoteInterop(CameraModel cameraModel, ImageFormat imageFormat, bool autoDeleteImageFile, TraceLogger traceLogger)
         {
+            traceLogger.LogMessage("ImagingEdgeRemoteInterop", "Created");
+            _traceLogger = traceLogger;
             _cameraModel = cameraModel;
             _imageFormat = imageFormat;
             _autoDeleteImageFile = autoDeleteImageFile;
@@ -174,42 +189,42 @@ namespace ASCOM.Sony
         {
             var noCameraConnectedWindowObjects = new List<WindowObject>()
             {
-                new WindowObject("ok", new IntPtr(), new List<int>(){ 0 }, "OK" ),
-                new WindowObject("cameraNotConnectedMessage", new IntPtr(), new List<int>(){ 2 }, "The camera is not connected. Check the USB or network connection."),
+                new WindowObject("ok", new List<int>(){ 0 }, "OK" ),
+                new WindowObject("cameraNotConnectedMessage", new List<int>(){ 2 }, "The camera is not connected. Check the USB or network connection."),
             };
 
             var selectCameraWindowObjects = new List<WindowObject>()
             {
-                new WindowObject("listView", new IntPtr(), new List<int>(){ 0 } ),
-                new WindowObject("refresh", new IntPtr(), new List<int>(){ 2 } , "Refresh"),
-                new WindowObject("close", new IntPtr(), new List<int>(){ 3 }, "Close" ),
+                new WindowObject("listView", new List<int>(){ 0 } ),
+                new WindowObject("refresh", new List<int>(){ 2 } , "Refresh"),
+                new WindowObject("close", new List<int>(){ 3 }, "Close" ),
             };
 
             var mainWindowObjects = new List<WindowObject>()
             {
-                new WindowObject("shutterButton", new IntPtr(), new List<int>(){ 3,0,0 } ),
-                new WindowObject("modeLabel", new IntPtr(), new List<int>(){ 3,2,0 }, "  Mode" ),
-                new WindowObject("FLabel", new IntPtr(), new List<int>(){ 3,2,2 }, "  F" ),
-                new WindowObject("shutterSpeedLabel", new IntPtr(), new List<int>(){ 3,2,7 } ),
-                new WindowObject("isoLabel", new IntPtr(), new List<int>(){ 3,2,9 } ),
-                new WindowObject("shutterSpeedIncreaseButton", new IntPtr(), new List<int>(){ 3,2,14 } ),
-                new WindowObject("shutterSpeedDecreaseButton", new IntPtr(), new List<int>(){ 3,2,15 } ),
-                new WindowObject("isoIncreaseButton", new IntPtr(), new List<int>(){ 3,2,18 } ),
-                new WindowObject("isoDecreaseButton", new IntPtr(), new List<int>(){ 3,2,19 } ),
-                new WindowObject("fileFormatButton", new IntPtr(), new List<int>(){ 3,3,9 } ),
-                new WindowObject("folderCombobox", new IntPtr(), new List<int>(){ 3,6,9 } ),
+                new WindowObject("shutterButton", new List<int>(){ 3,0,0 } ),
+                new WindowObject("modeLabel", new List<int>(){ 3,2,0 }, "  Mode" ),
+                new WindowObject("FLabel", new List<int>(){ 3,2,2 }, "  F" ),
+                new WindowObject("shutterSpeedLabel", new List<int>(){ 3,2,7 } ),
+                new WindowObject("isoLabel", new List<int>(){ 3,2,9 } ),
+                new WindowObject("shutterSpeedIncreaseButton", new List<int>(){ 3,2,14 } ),
+                new WindowObject("shutterSpeedDecreaseButton", new List<int>(){ 3,2,15 } ),
+                new WindowObject("isoIncreaseButton", new List<int>(){ 3,2,18 } ),
+                new WindowObject("isoDecreaseButton", new List<int>(){ 3,2,19 } ),
+                new WindowObject("fileFormatButton",  new List<int>(){ 3,3,9 } ),
+                new WindowObject("folderCombobox", new List<int>(){ 3,6,9 } ),
             };
             
             var cannotCreateFolderWindowObjects = new List<WindowObject>()
             {
-                new WindowObject("ok", new IntPtr(), new List<int>(){ 0 }, "OK" ),
-                new WindowObject("cannotAccessTheFolder", new IntPtr(), new List<int>(){ 2 }, "Cannot create a folder because an invalid folder name was entered." ),
+                new WindowObject("ok", new List<int>(){ 0 }, "OK" ),
+                new WindowObject("cannotAccessTheFolder", new List<int>(){ 2 }, "Cannot create a folder because an invalid folder name was entered." ),
             };
 
             var cannotAccessFolderWindowObjects = new List<WindowObject>()
             {
-                new WindowObject("ok", new IntPtr(), new List<int>(){ 0 }, "OK" ),
-                new WindowObject("cannotAccessTheFolder", new IntPtr(), new List<int>(){ 2 }, "Cannot access the folder." ),
+                new WindowObject("ok", new List<int>(){ 0 }, "OK" ),
+                new WindowObject("cannotAccessTheFolder", new List<int>(){ 2 }, "Cannot access the folder." ),
             };
 
             Windows = new List<Window>()
@@ -222,6 +237,14 @@ namespace ASCOM.Sony
             };
         }
 
+        private void PressButton(WindowType windowType, string button)
+        {
+            _traceLogger.LogMessage("DBUG-PressButton", windowType.ToString() + " - " + button);
+            PostMessage(GetHandle(windowType, button), BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+
+            // PostMessage(GetHandle(windowType, button), BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+        }
+
         private IntPtr GetHandle(WindowType windowType, string handleName)
         {
             Window window = Windows.Where(x => x.WindowType == windowType).FirstOrDefault();
@@ -229,14 +252,45 @@ namespace ASCOM.Sony
             return windowObject.Handle;
         }
 
-        private void PressButton(WindowType windowType, string button)
+        private void FileSystemWatcherOnCreated(object sender, FileSystemEventArgs e)
         {
-            PostMessage(GetHandle(windowType, button), BM_CLICK, IntPtr.Zero, IntPtr.Zero);
-            Thread.Sleep(100);
-            PostMessage(GetHandle(windowType, button), BM_CLICK, IntPtr.Zero, IntPtr.Zero);
-            //PostMessage(GetHandle(windowType, button), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            //Thread.Sleep(100);
-            //PostMessage(GetHandle(windowType, button), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            _traceLogger.LogMessage("DBUG-FileSysWatcher", "start");
+            _fileSystemWatcher.EnableRaisingEvents = false;
+            if (e.ChangeType == WatcherChangeTypes.Created)
+            {
+                string filePath = e.FullPath;
+                //ensure file is completely saved to hard disk
+
+                var fileReadRetries = 6;
+                while ((CanAccessFile(filePath) == false) && fileReadRetries > 0)
+                {
+                    _traceLogger.LogMessage("DBUG-FileSysWatcher", "try read file");
+                    fileReadRetries--;
+                    Thread.Sleep(500); // time between file read retries
+                }
+
+                Thread.Sleep(1000); // file lock timer - for some reason we need to wait here for file lock to be released on image file
+                
+                Array imageArray;
+                try
+                {
+                    _traceLogger.LogMessage("DBUG-FileSysWatcher", "read image");
+                    imageArray = ReadCameraImageArray(filePath);
+                }
+                catch (Exception exc)
+                {
+                    _traceLogger.LogMessage("DBUG-FileSysWatcher", "error, start new image");
+                    StartExposure(_lastIso, _lastDurationSeconds, _lastEnableBulbMode);
+                    return;
+                }
+
+                if (_autoDeleteImageFile)
+                {
+                    File.Delete(filePath);
+                }
+
+                ExposureReady?.Invoke(this, new ExposureReadyEventArgs(imageArray));
+            }
         }
 
         private Array ReadCameraImageArray(string rawFileName)
@@ -251,46 +305,6 @@ namespace ASCOM.Sony
                     return _imageDataProcessor.ReadJpeg(rawFileName);
                 default:
                     throw new ArgumentOutOfRangeException();
-            }
-        }
-
-        private void FileSystemWatcherOnCreated(object sender, FileSystemEventArgs e)
-        {
-            _fileSystemWatcher.EnableRaisingEvents = false;
-            if (e.ChangeType == WatcherChangeTypes.Created)
-            {
-                string filePath = e.FullPath;
-                //ensure file is completely saved to hard disk
-
-                var fileReadRetries = 6;
-                while ((CanAccessFile(filePath) == false) && fileReadRetries > 0)
-                {
-                    fileReadRetries--;
-                    Thread.Sleep(500);
-                }
-                // ToDo need to get a new image
-
-                Thread.Sleep(3000);//for some reason we need to wait here for file lock to be released on image file
-                
-                var fi = new FileInfo(filePath);
-                
-                Array imageArray;
-                try
-                {
-                    imageArray = ReadCameraImageArray(filePath);
-                }
-                catch (Exception exc)
-                {
-                    StartExposure(_lastIso, _lastDurationSeconds, _lastEnableBulbMode);
-                    return;
-                }
-
-                if (_autoDeleteImageFile)
-                {
-                    File.Delete(filePath);
-                }
-
-                ExposureReady?.Invoke(this, new ExposureReadyEventArgs(imageArray));
             }
         }
 
@@ -311,6 +325,30 @@ namespace ASCOM.Sony
             }
         }
 
+        private void createFileSystemWatchers()
+        {
+            var monitorFolderPath = GetCurrentSaveFolder();
+
+            //create save folder if not exists
+            if (Directory.Exists(monitorFolderPath) == false)
+                Directory.CreateDirectory(monitorFolderPath);
+
+            //create file system watcher to monitor save folder
+            _fileSystemWatcher = new FileSystemWatcher(monitorFolderPath);
+            _fileSystemWatcher.NotifyFilter = NotifyFilters.FileName;
+            _fileSystemWatcher.Created += FileSystemWatcherOnCreated;
+            _fileSystemWatcher.EnableRaisingEvents = false;
+        }
+
+        private void SyncSaveFolder()
+        {
+            //it is possible that user changed save folder in remote app - this method ensure that we looking for right folder
+            if (_fileSystemWatcher != null && _fileSystemWatcher.Path != GetCurrentSaveFolder())
+            {
+                _fileSystemWatcher.Path = GetCurrentSaveFolder();
+            }
+        }
+
         public event EventHandler<ExposureReadyEventArgs> ExposureReady;
         public event EventHandler<ExposureCompletedEventArgs> ExposureCompleted;
         public event EventHandler<ExposureFailedEventArgs> ExposureFailed;
@@ -323,6 +361,7 @@ namespace ASCOM.Sony
             {
                 startRemoteApp();
                 remoteAppStateMachine();
+                _traceLogger.LogMessage("DBUG-Connect", "Connected");
             }
             catch (Exception e)
             {
@@ -332,9 +371,11 @@ namespace ASCOM.Sony
 
         private void startRemoteApp()
         {
+            _traceLogger.LogMessage("DBUG-startRemoteApp", "Start");
             var hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
             if (hRemoteAppWindow == IntPtr.Zero)
             {
+                _traceLogger.LogMessage("DBUG-startRemoteApp", "Start Process");
                 Process.Start(@"D:\SonyImagaingEdge\Sony\Remote.exe");
 
                 var checkWindowAttempts = 10;
@@ -349,7 +390,12 @@ namespace ASCOM.Sony
                 }
             }
             if (hRemoteAppWindow == IntPtr.Zero)
+            {
+                _traceLogger.LogMessage("DBUG-startRemoteApp", "Unable to start App");
                 throw new Exception("Unable to locate Imaging Edge Remote app main window.");
+            }
+
+            _traceLogger.LogMessage("DBUG-startRemoteApp", "App Is Running");
         }
 
         private void remoteAppStateMachine()
@@ -357,7 +403,9 @@ namespace ASCOM.Sony
             while (true)
             {
                 populateWindowHandles();
-                switch (whatsTheCurrentWindow())
+                var currentWindow = whatsTheCurrentWindow();
+                _traceLogger.LogMessage("remoteAppStateMachine", currentWindow.ToString());
+                switch (currentWindow)
                 {
                     case WindowType.main:
                         StartImaging();
@@ -376,12 +424,13 @@ namespace ASCOM.Sony
                         CannotCreateFolderPressOk();
                         break;
                     case WindowType.noWindow:
+                        Thread.Sleep(500);
                         // chill, sometimes there are no active remote windows when loading the program
                         break;
                     default:
                         throw new Exception("Unknown window");
                 }
-                Thread.Sleep(500);
+                Thread.Sleep(500); // time between checking current window to allow things to load.
             }
         }
 
@@ -397,17 +446,28 @@ namespace ASCOM.Sony
 
         private void CannotCreateFolderPressOk()
         {
-            // user has to change the folder in the remote app
-            Thread.Sleep(10000);
+            Thread.Sleep(10000); // user has to change the folder in the remote app
             PressButton(WindowType.cannotCreateFolder, "ok");
         }
 
         private void SelectFirstCamera()
         {
-            //PressButton(WindowType.selectCamera, "refresh");
-            // wait for user to select camera
-            Thread.Sleep(10000);
-            //ListViewControl.SelectFirstItem(GetHandle(WindowType.selectCamera, "listView"));
+            _traceLogger.LogMessage("DBUG-"+WindowType.cannotAccessFolder.ToString(), "select first option");
+            // have to do something different for this window.
+            // in this case it will blindly press the down arrow then enter which will select the first camera on the list
+
+            // should only be 1 remote window at this point, get its handle
+            var remoteWindowHandle = GetWindows.GetOpenWindows().Where(x => x.Value == "Remote").ToList().FirstOrDefault().Key;
+
+            // set the remote window to the active window (important)
+            SetForegroundWindow(remoteWindowHandle);
+            Thread.Sleep(100);
+            SendKeys.SendWait("{DOWN}");
+            Thread.Sleep(100);
+            SendKeys.SendWait("{ENTER}");
+            Thread.Sleep(100);
+            SendKeys.Flush();
+            Thread.Sleep(500); // wait for program to load up
         }
 
         private void StartImaging()
@@ -415,6 +475,7 @@ namespace ASCOM.Sony
             // unless initialising dont need to do anything!
             if (_fileSystemWatcher == null)
                 createFileSystemWatchers();
+            
         }
 
         private void populateWindowHandles()
@@ -444,30 +505,31 @@ namespace ASCOM.Sony
                 return WindowType.noWindow;
 
             if (remoteWindows.Count == 1)
-                return FindMatchingWindow(remoteWindows.First().Key);
+                return ReturnMatchingWindowObject(remoteWindows.First().Key);
 
-            // if there are 2 windows check if its the 'cannot access folder' window as this has a higher priority than the others.
+            // if there are 2 active windows check if its the 'cannot access folder' window as this has a higher priority than the others.
             var windowList = new List<WindowType>();
             foreach (var remoteWindow in remoteWindows)
-                windowList.Add(FindMatchingWindow(remoteWindows.First().Key));
+                windowList.Add(ReturnMatchingWindowObject(remoteWindows.First().Key));
             if (windowList.Contains(WindowType.cannotAccessFolder))
                 return WindowType.cannotAccessFolder;
 
+            // if there are 2 active windows and its not the 'cannot access folder' window then something unexpected has happened
             throw new Exception("Unknown Window");
         }
 
-        private WindowType FindMatchingWindow(IntPtr remoteWindow)
+        private WindowType ReturnMatchingWindowObject(IntPtr remoteWindow)
         {
             var handleTree = BuildWindowHandlesTree(remoteWindow);
             foreach (var window in Windows)
             {
-                if (DoWindowObjectsMatch(handleTree, window))
+                if (DoesWindowObjectMatchWindow(handleTree, window))
                     return window.WindowType;
             }
             return WindowType.unknown;
         }
 
-        bool DoWindowObjectsMatch(TreeNode<IntPtr> handleTree, Window window)
+        bool DoesWindowObjectMatchWindow(TreeNode<IntPtr> handleTree, Window window)
         {
             foreach (var windowObject in window.WindowObjects)
             {
@@ -499,21 +561,6 @@ namespace ASCOM.Sony
                 return getValueFromTree(windowTree.Children[newChildIds.First()], newChildIds);
             }
             return windowTree.Value;
-        }
-
-        private void createFileSystemWatchers()
-        {
-            var monitorFolderPath = GetCurrentSaveFolder();
-
-            //create save folder if not exists
-            if (Directory.Exists(monitorFolderPath) == false)
-                Directory.CreateDirectory(monitorFolderPath);
-            
-            //create file system watcher to monitor save folder
-            _fileSystemWatcher = new FileSystemWatcher(monitorFolderPath);
-            _fileSystemWatcher.NotifyFilter = NotifyFilters.FileName;
-            _fileSystemWatcher.Created += FileSystemWatcherOnCreated;
-            _fileSystemWatcher.EnableRaisingEvents = false;
         }
 
         public void Disconnect()
@@ -552,16 +599,7 @@ namespace ASCOM.Sony
                         ISOAdjustment--;
                     }
                 }
-                Thread.Sleep(1000);
-            }
-        }
-
-        private void SyncSaveFolder()
-        {
-            //it is possible that user changed save folder in remote app - this method ensure that we looking for right folder
-            if (_fileSystemWatcher != null && _fileSystemWatcher.Path != GetCurrentSaveFolder())
-            {
-                _fileSystemWatcher.Path = GetCurrentSaveFolder();
+                Thread.Sleep(1000); // timeout after changing the ISO to requested value
             }
         }
 
@@ -583,7 +621,6 @@ namespace ASCOM.Sony
             while (requestedShutterSpeed != GetCurrentShutterSpeed())
             {
                 AdjustShutterSpeed(requestedShutterSpeed, GetCurrentShutterSpeed());
-                Thread.Sleep(1000);
             }
         }
 
@@ -607,12 +644,16 @@ namespace ASCOM.Sony
                     shutterAdjustment--;
                 }
             }
+
+            Thread.Sleep(1000); // timeout after changing the Shutter Speed to requested value
         }
 		
         public void StartExposure(short iso, double durationSeconds, bool enableBulbMode = false)
         {
+            _traceLogger.LogMessage("DBUG-StartExposure", "Start");
             // make sure the remote app connected and in the correct state before trying an exposure
             Connect();
+            _traceLogger.LogMessage("DBUG-StartExposure", "Connected");
 
             _lastIso = iso;
             _lastDurationSeconds = durationSeconds;
@@ -628,13 +669,21 @@ namespace ASCOM.Sony
 
             _exposureBackgroundWorker.DoWork += new DoWorkEventHandler(((sender, args) =>
             {
-                SetShutterSpeed(durationSeconds, enableBulbMode);
-                SetISO(iso);
-                SyncSaveFolder();
-
-                if (args.Cancel == false)
+                try
                 {
-                    TryTakePhoto((int)durationSeconds);
+                    _traceLogger.LogMessage("DBUG-StartExposure", "DoWork");
+                    SetShutterSpeed(durationSeconds, enableBulbMode);
+                    SetISO(iso);
+                    SyncSaveFolder();
+
+                    if (args.Cancel == false)
+                    {
+                        TryTakePhoto((int)durationSeconds);
+                    }
+                }
+                catch
+                {
+                    _traceLogger.LogMessage("DBUG-StartExposure", "Exception in background worker");
                 }
             }));
 
@@ -652,16 +701,16 @@ namespace ASCOM.Sony
 
         private void TryTakePhoto(int durationSeconds)
         {
+            _traceLogger.LogMessage("DBUG-TryTakePhoto", "Start");
             // make sure we're on the main window
             Connect();
-
             try
             {
                 BeginExposure();
                 _remainingExposure = durationSeconds;
                 while (_remainingExposure > 0)
                 {
-                    Thread.Sleep(1000);
+                    Thread.Sleep(1000); // remaining exposure countdown
                     _remainingExposure--;
                 }
             }
@@ -707,8 +756,7 @@ namespace ASCOM.Sony
                 if (exposureInProgress == false)
                 {
                     exposureInProgress = true;
-                    PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-                    PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                    PressButton(WindowType.main, "shutterButton");
                 }
             }
         }
@@ -722,8 +770,7 @@ namespace ASCOM.Sony
                     exposureInProgress = false;
                     if (shutter && _cameraModel.CanStopExposure)
                     {
-                        PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-                        PostMessage(GetHandle(WindowType.main, "shutterButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+                        PressButton(WindowType.main, "shutterButton");
                     }
                     else
                     {
@@ -748,11 +795,10 @@ namespace ASCOM.Sony
             if (GetCurrentISO() == _cameraModel.Gains.Last().ToString())
                 return;
 
-            PostMessage(GetHandle(WindowType.main, "isoIncreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(GetHandle(WindowType.main, "isoIncreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            PressButton(WindowType.main, "isoIncreaseButton");
 
             //TODO: properly wait sony remote app to update ISO
-            Thread.Sleep(200);
+            Thread.Sleep(200); // Time bewteen increase ISO button presses
         }
 
         private void DecreaseISO()
@@ -763,11 +809,9 @@ namespace ASCOM.Sony
             if (GetCurrentISO() == _cameraModel.Gains.First().ToString())
                 return;
 
-            PostMessage(GetHandle(WindowType.main, "isoDecreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(GetHandle(WindowType.main, "isoDecreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
-
-            //TODO: properly wait sony remote app to update ISO
-            Thread.Sleep(200);
+            PressButton(WindowType.main, "isoDecreaseButton");
+            
+            Thread.Sleep(200); // Time bewteen decrease ISO button presses
         }
 
         private void IncreaseShutterSpeed()
@@ -778,11 +822,9 @@ namespace ASCOM.Sony
             if (GetCurrentShutterSpeed() == _cameraModel.ShutterSpeeds.Last().Name)
                 return;
 
-            PostMessage(GetHandle(WindowType.main, "shutterSpeedIncreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(GetHandle(WindowType.main, "shutterSpeedIncreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
-
-            //TODO: properly wait sony remote app to update Shutter Speed
-            Thread.Sleep(200);
+            PressButton(WindowType.main, "shutterSpeedIncreaseButton");
+            
+            Thread.Sleep(200); // Time bewteen increase shutter speed button presses
         }
 
         private void DecreaseShutterSpeed()
@@ -793,11 +835,9 @@ namespace ASCOM.Sony
             if (GetCurrentShutterSpeed() == _cameraModel.ShutterSpeeds.First().Name)
                 return;
 
-            PostMessage(GetHandle(WindowType.main, "shutterSpeedDecreaseButton"), WM_LBUTTONDOWN, IntPtr.Zero, IntPtr.Zero);
-            PostMessage(GetHandle(WindowType.main, "shutterSpeedDecreaseButton"), WM_LBUTTONUP, IntPtr.Zero, IntPtr.Zero);
+            PressButton(WindowType.main, "shutterSpeedDecreaseButton");
 
-            //TODO: properly wait sony remote app to update Shutter Speed
-            Thread.Sleep(200);
+            Thread.Sleep(200); // Time bewteen decrease shutter speed button presses
         }
 
         private string GetCurrentShutterSpeed()
@@ -855,8 +895,6 @@ namespace ASCOM.Sony
                 throw new Exception("Unable to build control hierarchy of Imaging Edge Remote app main window.", e);
             }
         }
-
-
 
         private static bool EnumWindowTree(IntPtr hWnd, IntPtr lParam)
         {

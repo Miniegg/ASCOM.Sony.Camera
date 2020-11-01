@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using ASCOM.Utilities;
+using System;
 
 namespace ASCOM.Sony
 {
@@ -23,10 +21,10 @@ namespace ASCOM.Sony
         public event EventHandler<ExposureCompletedEventArgs> ExposureCompleted;
         public event EventHandler<ExposureFailedEventArgs> ExposureFailed;
 
-        public SonyCamera(CameraModel cameraModel, ImageFormat imageFormat, bool autoDeleteImageFile)
+        public SonyCamera(CameraModel cameraModel, ImageFormat imageFormat, bool autoDeleteImageFile, TraceLogger traceLogger)
         {
             _cameraModel = cameraModel;
-            _remoteApp = new ImagingEdgeRemoteInterop(cameraModel, imageFormat, autoDeleteImageFile);
+            _remoteApp = new ImagingEdgeRemoteInterop(cameraModel, imageFormat, autoDeleteImageFile, traceLogger);
 
             _remoteApp.ExposureCompleted += _remoteApp_ExposureCompleted;
             _remoteApp.ExposureReady += _remoteApp_ExposureReady;

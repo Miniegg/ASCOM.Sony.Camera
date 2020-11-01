@@ -105,7 +105,7 @@ namespace ASCOM.Sony
             }
             
             _cameraState = CameraStates.cameraDownload;
-
+            
             try
             {
                 try
@@ -199,7 +199,7 @@ namespace ASCOM.Sony
                     {
                         if (_sonyCamera == null)
                         {
-                            _sonyCamera = new SonyCamera(cameraModel,imageFormat,autoDeleteImageFile);
+                            _sonyCamera = new SonyCamera(cameraModel,imageFormat,autoDeleteImageFile, tl);
                         }
                         _sonyCamera.Connect();
                     }
