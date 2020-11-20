@@ -1,7 +1,15 @@
-﻿using System;
+﻿using System.Collections.Generic;
 
 namespace ASCOM.Sony
 {
+    public class Settings
+    {
+        public Dictionary<string, int> Delays { get; set; }
+        public CameraModel[] CameraModels { get; set; }
+        public ShutterSpeed[] ShutterSpeedMap { get; set; }
+        public List<Window> Windows { get; set; }
+    }
+
     public class ShutterSpeed
     {
         public double DurationSeconds { get; set; }

@@ -14,61 +14,50 @@ namespace ASCOM.Sony
     [ComVisible(false)]					// Form not registered for COM!
     public partial class SetupDialogForm : Form
     {
-        private CameraModel _cameraModel;
-        private CameraModel[] _cameraModels;
-
         public SetupDialogForm()
         {
             InitializeComponent();
-            // Initialise current values of user settings from the ASCOM Profile
             InitUI();
         }
 
         private void InitUI()
         {
-            _cameraModels = Camera.cameraModels;
-            _cameraModel = Camera.cameraModel;
-
-            chkTrace.Checked = Camera.tl.Enabled;
+            AppPathTextBox.Text = Camera.SonyAppPath;
+            chkTrace.Checked = Camera.TraceEnabled;
+            checkAutoDeleteFile.Checked = Camera.AutoDeleteImage;
+            cbBulbMode.Checked = Camera.BulbMode;
 
             cbImageFormat.Items.Clear();
             cbImageFormat.Items.AddRange(new[]
-            {
-                (object)ImageFormat.CFA,
+            {   (object)
+                ImageFormat.CFA,
                 ImageFormat.Debayered,
                 ImageFormat.JPG
             });
-            cbImageFormat.SelectedItem = Camera.imageFormat;
-
-            checkAutoDeleteFile.Checked = Camera.autoDeleteImageFile;
+            cbImageFormat.SelectedItem = Camera.ImageFormat;
 
             cbCameraModel.Items.Clear();
-            cbCameraModel.Items.AddRange(_cameraModels.Select(m => (object)m).ToArray());
-            cbCameraModel.DisplayMember = "Name";
-            if (string.IsNullOrEmpty(_cameraModel.ID) == false)
-            {
-                cbCameraModel.SelectedItem = _cameraModel;
-            }
 
-            cbISO.Items.Clear();
-            if (_cameraModel != null)
-            {
-                cbISO.Items.AddRange(Camera.cameraModel.Gains.Select(iso => (object)iso).ToArray());
-                cbISO.SelectedItem = Camera.iso;
-            }
+            cbCameraModel.Items.AddRange(Camera.Settings.CameraModels.Select(cm => cm.ID).ToArray());
+            cbCameraModel.SelectedItem = Camera.SelectedCameraId;
 
-            ToggleCameraSettings();
+            cbSelectedIso.Items.Clear();
+            cbSelectedIso.Items.AddRange(ShortToObjectArray(Camera.GetSelectedCameraModel().Gains));
+            cbSelectedIso.SelectedItem = Camera.SelectedIso;
+
+            PopulateCameraSettings(Camera.GetSelectedCameraModel());
         }
 
         private void cmdOK_Click(object sender, EventArgs e) // OK button event handler
         {
-            // Place any validation constraint checks here
-            // Update the state variables with results from the dialogue
-            Camera.cameraModel = (cbCameraModel.SelectedItem as CameraModel) ?? _cameraModels.FirstOrDefault();
-            Camera.iso = (short?) cbISO.SelectedItem ?? _cameraModel.Gains.First();
-            Camera.imageFormat = (ImageFormat?) cbImageFormat.SelectedItem ?? ImageFormat.CFA;
-            Camera.autoDeleteImageFile = checkAutoDeleteFile.Checked;
-            Camera.tl.Enabled = chkTrace.Checked;
+            // Update Camera class variables with results from the dialogue
+            Camera.SelectedCameraId = cbCameraModel.SelectedItem as string;
+            short.TryParse(cbSelectedIso.SelectedItem.ToString(), out Camera.SelectedIso);
+            Camera.ImageFormat = (ImageFormat?)cbImageFormat.SelectedItem ?? ImageFormat.CFA;
+            Camera.AutoDeleteImage = checkAutoDeleteFile.Checked;
+            Camera.TraceEnabled = chkTrace.Checked;
+            Camera.SonyAppPath = AppPathTextBox.Text;
+            Camera.BulbMode = cbBulbMode.Checked;
         }
 
         private void cmdCancel_Click(object sender, EventArgs e) // Cancel button event handler
@@ -76,56 +65,31 @@ namespace ASCOM.Sony
             Close();
         }
 
-        private void BrowseToAscom(object sender, EventArgs e) // Click on ASCOM logo event handler
-        {
-            try
-            {
-                System.Diagnostics.Process.Start("http://ascom-standards.org/");
-            }
-            catch (System.ComponentModel.Win32Exception noBrowser)
-            {
-                if (noBrowser.ErrorCode == -2147467259)
-                    MessageBox.Show(noBrowser.Message);
-            }
-            catch (System.Exception other)
-            {
-                MessageBox.Show(other.Message);
-            }
-        }
-
         private void cbCameraModel_SelectedValueChanged(object sender, EventArgs e)
         {
-            cbISO.Items.Clear();
-            CameraModel selectedCameraModel = (CameraModel) cbCameraModel.SelectedItem;
+            var selectedCameraId = cbCameraModel.SelectedItem as string;
+            CameraModel selectedCameraModel = Camera.GetSelectedCameraModel(selectedCameraId);
 
+            cbSelectedIso.Items.Clear();
             if (selectedCameraModel != null)
             {
-                cbISO.Items.AddRange(selectedCameraModel.Gains.Select(iso => (object)iso).ToArray());
-                if (selectedCameraModel.Gains.Contains(Camera.iso))
+                cbSelectedIso.Items.AddRange(ShortToObjectArray(selectedCameraModel.Gains));
+                if (selectedCameraModel.Gains.Contains(Camera.SelectedIso))
                 {
-                    cbISO.SelectedItem = Camera.iso;
+                    cbSelectedIso.SelectedItem = Camera.SelectedIso;
                 }
                 else
                 {
-                    cbISO.SelectedItem = selectedCameraModel.Gains.FirstOrDefault();
+                    cbSelectedIso.SelectedItem = selectedCameraModel.Gains.FirstOrDefault();
                 }
             }
 
             PopulateCameraSettings(selectedCameraModel);
         }
 
-        private bool _showCustomCameraControls = false;
-
-        private void cbShowCameraSettings_CheckedChanged(object sender, EventArgs e)
+        private object[] ShortToObjectArray(short[] shortArray)
         {
-            ToggleCameraSettings();
-        }
-
-        private void ToggleCameraSettings()
-        {
-            _showCustomCameraControls = cbShowCameraSettings.Checked;
-            pnlCustomCamera.Enabled = _showCustomCameraControls;
-            cbCameraModel.Enabled = !_showCustomCameraControls;
+            return shortArray.Select(value => (object)value).ToArray();
         }
 
         private void PopulateCameraSettings(CameraModel cameraModel)
@@ -147,7 +111,7 @@ namespace ASCOM.Sony
 
                 lbISO.Items.Clear();
                 lbISO.Items.AddRange(new ListBox.ObjectCollection(lbISO, cameraModel.Gains.OrderBy(g => g).Select(g => (object)g.ToString()).ToArray()));
-
+                
                 lbShutterSpeed.Items.Clear();
                 lbShutterSpeed.Items.AddRange(new ListBox.ObjectCollection(lbShutterSpeed, cameraModel.ShutterSpeeds.OrderBy(s => s.DurationSeconds).Select(s => (object)$"{s.Name};{s.DurationSeconds.ToString()}").ToArray()));
             }
@@ -170,14 +134,21 @@ namespace ASCOM.Sony
             }
         }
 
-        private void btnAddISO_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        private void BrowseToAscom(object sender, EventArgs e) // Click on ASCOM logo event handler
         {
-
-        }
-
-        private void btnAddShutterSpeed_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
-        {
-
+            try
+            {
+                System.Diagnostics.Process.Start("http://ascom-standards.org/");
+            }
+            catch (System.ComponentModel.Win32Exception noBrowser)
+            {
+                if (noBrowser.ErrorCode == -2147467259)
+                    MessageBox.Show(noBrowser.Message);
+            }
+            catch (System.Exception other)
+            {
+                MessageBox.Show(other.Message);
+            }
         }
     }
 }

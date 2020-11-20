@@ -1,16 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Newtonsoft.Json;
 using System.Threading;
-using Microsoft.Win32;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace ASCOM.Sony.TestConsoleApp
@@ -21,29 +15,24 @@ namespace ASCOM.Sony.TestConsoleApp
         static extern IntPtr GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 
         static void Main(string[] args)
-        {
-            // make sure to build+install ASCOM driver first
-            // use the ASCOM Diagnostics utility to choose the correct camera     
+        {   
             var camera = new Camera();
+            camera.SetupDialog();
             camera.Connected = true;
 
             if (camera.Connected)
             {
-                Console.WriteLine("Press S to take exposure.");
                 do
                 {
+                    Console.WriteLine("Press S to start exposure.");
                     var key = Console.ReadKey(true);
                     if (key.Key == ConsoleKey.S)
                     {
-                        var exposureLength = (double)1 / 40;
-                        camera.Gain = 0;
-                        camera.StartExposure(exposureLength, true);
-
+                        var exposureLength = 5;
+                        camera.Gain = 6;
+                        camera.StartExposure(exposureLength, true);                        
                         while (!camera.ImageReady)
-                        {
                             Thread.Sleep(100);
-                        }
-
                         var image = camera.ImageArray;
                     }
                 } while (true);

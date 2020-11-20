@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using ASCOM.Astrometry.AstroUtils;
 using ASCOM.DeviceInterface;
 using ASCOM.Utilities;
 
@@ -25,9 +22,7 @@ namespace ASCOM.Sony
         /// Private variable to hold the connected state
         /// </summary>
         private bool connectedState;
-
         private SonyCamera _sonyCamera;
-        
         private CameraStates _cameraState = CameraStates.cameraIdle;
 
         /// <summary>
@@ -37,15 +32,10 @@ namespace ASCOM.Sony
         public Camera()
         {
             tl = new TraceLogger("", "DSLR.Sony");
-            ReadProfile(); // Read device configuration from the ASCOM Profile store
-
+            tl.Enabled = TraceEnabled;
             tl.LogMessage("Camera", "Starting initialization");
-
+            ReadProfile(); // Read device configuration from the ASCOM Profile store
             connectedState = false; // Initialise connected to false
-            utilities = new Util(); //Initialise util object
-            astroUtilities = new AstroUtils(); // Initialise astro utilities object
-            //TODO: Implement your additional construction here
-
             tl.LogMessage("Camera", "Completed initialization");
         }
 
@@ -57,26 +47,29 @@ namespace ASCOM.Sony
             //todo: add code to avoid possible race condition which could theoretically happen if client application calls StartExposure and then immediately disconnects from camera; so checkConnected above passes but access to _sonlyCamera below would throw NullReferenceException
 
             if (Duration < 0.0) throw new InvalidValueException("StartExposure", Duration.ToString(), "0.0 upwards");
-            ushort readoutWidth = cameraModel.Sensor.GetReadoutWidth(imageFormat);
-            ushort readoutHeight = cameraModel.Sensor.GetReadoutHeight(imageFormat);
 
-            if (_cameraNumX > readoutWidth) throw new InvalidValueException("StartExposure", _cameraNumX.ToString(), readoutWidth.ToString());
-            if (_cameraNumY > readoutHeight) throw new InvalidValueException("StartExposure", _cameraNumY.ToString(), readoutHeight.ToString());
-            if (_cameraStartX > readoutWidth) throw new InvalidValueException("StartExposure", _cameraStartX.ToString(), readoutWidth.ToString());
-            if (_cameraStartY > readoutHeight) throw new InvalidValueException("StartExposure", _cameraStartY.ToString(), readoutHeight.ToString());
+            ushort readoutWidth = GetSelectedCameraModel().Sensor.GetReadoutWidth(ImageFormat);
+            ushort readoutHeight = GetSelectedCameraModel().Sensor.GetReadoutHeight(ImageFormat);
+
+            if (_numX > readoutWidth) throw new InvalidValueException("StartExposure", _numX.ToString(), readoutWidth.ToString());
+            if (_numY > readoutHeight) throw new InvalidValueException("StartExposure", _numY.ToString(), readoutHeight.ToString());
+            if (_startX > readoutWidth) throw new InvalidValueException("StartExposure", _startX.ToString(), readoutWidth.ToString());
+            if (_startY > readoutHeight) throw new InvalidValueException("StartExposure", _startY.ToString(), readoutHeight.ToString());
 
             if (_cameraState != CameraStates.cameraIdle) throw new InvalidOperationException("Cannot start exposure - camera is not idle");
 
-            // tl.LogMessage("StartExposure", $"Duration: {Duration} s. ISO: {Gains[Gain]}. {(Light ? "Light" : "Dark")} frame.");
+            tl.LogMessage("StartExposure", $"Duration: {Duration} s. ISO: {Gains[Gain]}. {(Light ? "Light" : "Dark")} frame.");
 
-            _cameraImageReady = false;
-            _cameraImageArray = null;
-            _cameraLastExposureDuration = Duration;
+            _imageReady = false;
+            _imageArray = null;
+            _lastExposureDuration = Duration;
             _exposureStart = DateTime.Now;
             _cameraState = CameraStates.cameraExposing;
 
             SubscribeCameraEvents();
-            _sonyCamera.StartExposure((short)Gains[Gain], Duration, Light);
+            
+            short.TryParse(Gains[Gain].ToString(), out short gain);
+            _sonyCamera.StartExposure(gain, Duration, Light);
         }
 
         private void SubscribeCameraEvents()
@@ -123,9 +116,9 @@ namespace ASCOM.Sony
 
                     tl.LogMessage("_sonyCamera_ExposureReady", StartX + " StartX," + StartY + " StartY, " + NumX + "NumX," + NumY + "NumY," +  CameraXSize + "CameraXSize," + CameraYSize + "CameraYSize");
                     // ToDo: is this nessacary
-                    _cameraImageArray = _imageDataProcessor.CutImageArray(e.ImageArray, StartX, StartY, NumX, NumY, CameraXSize, CameraYSize);
+                    _imageArray = _imageDataProcessor.CutImageArray(e.ImageArray, StartX, StartY, NumX, NumY, CameraXSize, CameraYSize);
                     _cameraState = CameraStates.cameraIdle;
-                    _cameraImageReady = true;
+                    _imageReady = true;
                 }
                 catch (Exception ex)
                 {
@@ -147,8 +140,8 @@ namespace ASCOM.Sony
 
         public void AbortExposure()
         {
-            if (!cameraModel.CanStopExposure)
-                throw new ASCOM.MethodNotImplementedException("Cannot Stop Exposure, CanStopExposure set to false");
+            if (!BulbMode)
+                throw new MethodNotImplementedException("Cannot Stop Exposure, CanStopExposure set to false");
 
             CheckConnected("Camera not connected");
             tl.LogMessage("AbortExposure","");
@@ -162,8 +155,8 @@ namespace ASCOM.Sony
 
         public void StopExposure()
         {
-            if (!cameraModel.CanStopExposure)
-                throw new ASCOM.MethodNotImplementedException("Cannot Abort Exposure, CanStopExposure set to false");
+            if (!BulbMode)
+                throw new MethodNotImplementedException("Cannot Abort Exposure, CanStopExposure set to false");
 
             CheckConnected("Camera not connected");
             tl.LogMessage("StopExposure", "");
@@ -175,8 +168,6 @@ namespace ASCOM.Sony
         #endregion
 
         #region ICamera Connected
-
-
         public bool Connected
         {
             get
@@ -199,7 +190,7 @@ namespace ASCOM.Sony
                     {
                         if (_sonyCamera == null)
                         {
-                            _sonyCamera = new SonyCamera(cameraModel,imageFormat,autoDeleteImageFile, tl);
+                            _sonyCamera = new SonyCamera(GetSelectedCameraModel(), ImageFormat, AutoDeleteImage, tl);
                         }
                         _sonyCamera.Connect();
                     }
@@ -222,22 +213,18 @@ namespace ASCOM.Sony
         #endregion
 
         #region ICamera Properties Implementation
-
-        //private const int ccdWidth = 6038; // Constants to define the ccd pixel dimensions
-        //private const int ccdHeight = 4025;
-        //private const double pixelSize = 5.97; // Constant for the pixel physical dimension
-
-        private int _cameraNumX;
-        private int _cameraNumY;
-        private int _cameraStartX = 0;
-        private int _cameraStartY = 0;
         private DateTime _exposureStart = DateTime.MinValue;
-        private double _cameraLastExposureDuration = 0.0;
-        private bool _cameraImageReady = false;
-        private Array _cameraImageArray; //sony interop component will return it as UInt16, needs to be converted to Int32 before returned to driver users
-        private object[,] _cameraImageArrayVariant;
+        private double _lastExposureDuration = 0.0;
+        private bool _imageReady = false;
+        private Array _imageArray; //sony interop component will return it as UInt16, needs to be converted to Int32 before returned to driver users
+
+        private int _numX;
+        private int _numY;
+        private int _startX = 0;
+        private int _startY = 0;
         private short _binX = 1;
         private short _binY = 1;
+        private short _gain;
 
         public short BayerOffsetX
         {
@@ -292,9 +279,9 @@ namespace ASCOM.Sony
                 //normally we should throw  ASCOM.PropertyNotImplementedException because we cannot control sensor temperature; but some apps seems to try to read that value and do not work correctly if they cant (example NINA)
                 //so as workaround user can set fixed temperature in cameramodel.JSON file
 
-                if (cameraModel.Sensor.CCDTemperature.HasValue)
+                if (GetSelectedCameraModel().Sensor.CCDTemperature.HasValue)
                 {
-                   return cameraModel.Sensor.CCDTemperature.Value;
+                   return GetSelectedCameraModel().Sensor.CCDTemperature.Value;
                 }
                 
                 tl.LogMessage("CCDTemperature Get Get", "Not implemented");
@@ -317,7 +304,7 @@ namespace ASCOM.Sony
         {
             get
             {
-                ushort readoutWidth = cameraModel.Sensor.GetReadoutWidth(imageFormat);
+                ushort readoutWidth = GetSelectedCameraModel().Sensor.GetReadoutWidth(ImageFormat);
                 
                 tl.LogMessage("CameraXSize Get", readoutWidth.ToString());
                 return readoutWidth;
@@ -328,7 +315,7 @@ namespace ASCOM.Sony
         {
             get
             {
-                ushort readoutHeight = cameraModel.Sensor.GetReadoutHeight(imageFormat);
+                ushort readoutHeight = GetSelectedCameraModel().Sensor.GetReadoutHeight(ImageFormat);
                 tl.LogMessage("CameraYSize Get", readoutHeight.ToString());
                 return readoutHeight;
             }
@@ -338,8 +325,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("CanAbortExposure Get", cameraModel.CanStopExposure.ToString()); 
-                return cameraModel.CanStopExposure;
+                tl.LogMessage("CanAbortExposure Get", BulbMode.ToString()); 
+                return BulbMode;
             }
         }
 
@@ -392,8 +379,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("CanStopExposure Get", false.ToString());
-                return true;
+                tl.LogMessage("CanStopExposure Get", BulbMode.ToString());
+                return BulbMode;
             }
         }
 
@@ -424,8 +411,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("ElectronsPerADU Get", cameraModel.Sensor.ElectronsPerADU.ToString());
-                return cameraModel.Sensor.ElectronsPerADU;
+                tl.LogMessage("ElectronsPerADU Get", GetSelectedCameraModel().Sensor.ElectronsPerADU.ToString());
+                return GetSelectedCameraModel().Sensor.ElectronsPerADU;
             }
         }
 
@@ -433,8 +420,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("ExposureMax Get", cameraModel.ExposureMax.ToString());
-                return cameraModel.ExposureMax;
+                tl.LogMessage("ExposureMax Get", GetSelectedCameraModel().ExposureMax.ToString());
+                return GetSelectedCameraModel().ExposureMax;
             }
         }
 
@@ -442,8 +429,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("ExposureMin Get", cameraModel.ExposureMin.ToString());
-                return cameraModel.ExposureMin;
+                tl.LogMessage("ExposureMin Get", GetSelectedCameraModel().ExposureMin.ToString());
+                return GetSelectedCameraModel().ExposureMin;
             }
         }
 
@@ -451,8 +438,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("ExposureResolution Get", cameraModel.ExposureResolution.ToString());
-                return cameraModel.ExposureResolution;
+                tl.LogMessage("ExposureResolution Get", GetSelectedCameraModel().ExposureResolution.ToString());
+                return GetSelectedCameraModel().ExposureResolution;
             }
         }
 
@@ -476,12 +463,11 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("FullWellCapacity Get", cameraModel.Sensor.FullWellCapacity.ToString());
-                return cameraModel.Sensor.FullWellCapacity;
+                tl.LogMessage("FullWellCapacity Get", GetSelectedCameraModel().Sensor.FullWellCapacity.ToString());
+                return GetSelectedCameraModel().Sensor.FullWellCapacity;
             }
         }
 
-        private short _gain;
         public short Gain
         {
             get
@@ -516,10 +502,19 @@ namespace ASCOM.Sony
 
         public ArrayList Gains
         {
+            // ASCOM standard = ArrayList of STRINGS!!!!
             get
             {
-                tl.LogMessage("Gains Get", cameraModel.Gains.ToString());//todo: log values of array
-                return new ArrayList(cameraModel.Gains);//todo; should we create new array list every time?
+                var arrayList = new ArrayList();
+                var stringGains = GetSelectedCameraModel().Gains.Select(g => g.ToString()).ToArray();
+                arrayList.AddRange(stringGains);
+                
+                string gainsOutput = "";
+                foreach (var item in arrayList)
+                    gainsOutput = $"{gainsOutput}, {item}";
+                tl.LogMessage("Gains Get", gainsOutput);
+
+                return arrayList;//todo; should we create new array list every time?
             }
         }
 
@@ -545,13 +540,13 @@ namespace ASCOM.Sony
         {
             get
             {
-                if (!_cameraImageReady)
+                if (!_imageReady)
                 {
                     tl.LogMessage("ImageArray Get", "Throwing InvalidOperationException because of a call to ImageArray before the first image has been taken!");
                     throw new ASCOM.InvalidOperationException("Call to ImageArray before the first image has been taken!");
                 }
 
-                return _cameraImageArray;
+                return _imageArray;
             }
         }
 
@@ -559,13 +554,13 @@ namespace ASCOM.Sony
         {
             get
             {
-                if (!_cameraImageReady)
+                if (!_imageReady)
                 {
                     tl.LogMessage("ImageArrayVariant Get", "Throwing InvalidOperationException because of a call to ImageArrayVariant before the first image has been taken!");
                     throw new ASCOM.InvalidOperationException("Call to ImageArrayVariant before the first image has been taken!");
                 }
 
-                return _imageDataProcessor.ToVariantArray(_cameraImageArray);
+                return _imageDataProcessor.ToVariantArray(_imageArray);
             }
         }
 
@@ -573,8 +568,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("ImageReady Get", _cameraImageReady.ToString());
-                return _cameraImageReady;
+                tl.LogMessage("ImageReady Get", _imageReady.ToString());
+                return _imageReady;
             }
         }
 
@@ -591,13 +586,13 @@ namespace ASCOM.Sony
         {
             get
             {
-                if (!_cameraImageReady)
+                if (!_imageReady)
                 {
                     tl.LogMessage("LastExposureDuration Get", "Throwing InvalidOperationException because of a call to LastExposureDuration before the first image has been taken!");
                     throw new ASCOM.InvalidOperationException("Call to LastExposureDuration before the first image has been taken!");
                 }
-                tl.LogMessage("LastExposureDuration Get", _cameraLastExposureDuration.ToString());
-                return _cameraLastExposureDuration;
+                tl.LogMessage("LastExposureDuration Get", _lastExposureDuration.ToString());
+                return _lastExposureDuration;
             }
         }
 
@@ -605,7 +600,7 @@ namespace ASCOM.Sony
         {
             get
             {
-                if (!_cameraImageReady)
+                if (!_imageReady)
                 {
                     tl.LogMessage("LastExposureStartTime Get", "Throwing InvalidOperationException because of a call to LastExposureStartTime before the first image has been taken!");
                     throw new ASCOM.InvalidOperationException("Call to LastExposureStartTime before the first image has been taken!");
@@ -622,10 +617,12 @@ namespace ASCOM.Sony
             {
                 int maxADU;
                 
-                switch (imageFormat)
+                switch (ImageFormat)
                 {
                     case ImageFormat.CFA:
-                        maxADU = cameraModel.Sensor.MaxADU;
+                        maxADU = GetSelectedCameraModel().Sensor.MaxADU;
+                        if (maxADU == 0)
+                            maxADU = 16383; // if maxADU is not defined in the JSON then asssign it default value of 14 bits
                         break;
                     case ImageFormat.Debayered: //note: we dont use sensor characteristic here because we use LibRaw to debayer RAW image and it is doing lot of things with the file, including I believe expanding color values to full 16bit
                         maxADU = ushort.MaxValue;
@@ -663,12 +660,12 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("NumX Get", _cameraNumX.ToString());
-                return _cameraNumX;
+                tl.LogMessage("NumX Get", _numX.ToString());
+                return _numX;
             }
             set
             {
-                _cameraNumX = value;
+                _numX = value;
                 tl.LogMessage("NumX set", value.ToString());
             }
         }
@@ -677,12 +674,12 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("NumY Get", _cameraNumY.ToString());
-                return _cameraNumY;
+                tl.LogMessage("NumY Get", _numY.ToString());
+                return _numY;
             }
             set
             {
-                _cameraNumY = value;
+                _numY = value;
                 tl.LogMessage("NumY set", value.ToString());
             }
         }
@@ -725,7 +722,7 @@ namespace ASCOM.Sony
         {
             get
             {
-                return cameraModel.Sensor.PixelSizeWidth*BinX;
+                return GetSelectedCameraModel().Sensor.PixelSizeWidth*BinX;
             }
         }
 
@@ -733,7 +730,7 @@ namespace ASCOM.Sony
         {
             get
             {
-                return cameraModel.Sensor.PixelSizeHeight*BinY;
+                return GetSelectedCameraModel().Sensor.PixelSizeHeight*BinY;
             }
         }
 
@@ -747,13 +744,13 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("ReadoutMode Get", $"{(short)ReadoutModes.IndexOf(imageFormat.ToString())} {imageFormat.ToString()}");
-                return (short)ReadoutModes.IndexOf(imageFormat.ToString());
+                tl.LogMessage("ReadoutMode Get", $"{(short)ReadoutModes.IndexOf(ImageFormat.ToString())} {ImageFormat.ToString()}");
+                return (short)ReadoutModes.IndexOf(ImageFormat.ToString());
             }
             set
             {
                 tl.LogMessage("ReadoutMode Set", value.ToString());
-                imageFormat = (ImageFormat) Enum.Parse(typeof(ImageFormat), (string) ReadoutModes[value], true);
+                ImageFormat = (ImageFormat) Enum.Parse(typeof(ImageFormat), (string) ReadoutModes[value], true);
             }
         }
 
@@ -762,7 +759,7 @@ namespace ASCOM.Sony
             get
             {
                 tl.LogMessage("ReadoutModes Get", "Not implemented");
-                return new ArrayList(new [] { ImageFormat.CFA.ToString(), ImageFormat.Debayered.ToString(), ImageFormat.JPG.ToString() });
+                return new ArrayList(new [] { Sony.ImageFormat.CFA.ToString(), Sony.ImageFormat.Debayered.ToString(), Sony.ImageFormat.JPG.ToString() });
             }
         }
 
@@ -770,8 +767,8 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("SensorName Get", cameraModel.Sensor.Name);
-                return cameraModel.Sensor.Name;
+                tl.LogMessage("SensorName Get", GetSelectedCameraModel().Sensor.Name);
+                return GetSelectedCameraModel().Sensor.Name;
             }
         }
 
@@ -780,7 +777,7 @@ namespace ASCOM.Sony
             get
             {
                 tl.LogMessage("SensorType Get", SensorType.RGGB.ToString());
-                switch (imageFormat)
+                switch (ImageFormat)
                 {
                     case ImageFormat.CFA:
                         return SensorType.RGGB;
@@ -790,7 +787,6 @@ namespace ASCOM.Sony
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-                
             }
         }
 
@@ -812,12 +808,12 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("StartX Get", _cameraStartX.ToString());
-                return _cameraStartX;
+                tl.LogMessage("StartX Get", _startX.ToString());
+                return _startX;
             }
             set
             {
-                _cameraStartX = value;
+                _startX = value;
                 tl.LogMessage("StartX Set", value.ToString());
             }
         }
@@ -826,17 +822,16 @@ namespace ASCOM.Sony
         {
             get
             {
-                tl.LogMessage("StartY Get", _cameraStartY.ToString());
-                return _cameraStartY;
+                tl.LogMessage("StartY Get", _startY.ToString());
+                return _startY;
             }
             set
             {
-                _cameraStartY = value;
+                _startY = value;
                 tl.LogMessage("StartY set", value.ToString());
             }
         }
         
-       
         #endregion
     }
 }

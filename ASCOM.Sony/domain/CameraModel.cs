@@ -10,7 +10,6 @@ namespace ASCOM.Sony
 
     public class Sensor
     {
-
         public string Name { get; set; }
 
         /// <summary>
@@ -105,8 +104,10 @@ namespace ASCOM.Sony
 
         public double ExposureMax { get; set; }
 
+        // all gain options in the cameras menu
         public string[] AllGains { get; set; }
 
+        // gains available to ASCOM (limited to a short int)
         public short[] Gains { get; set; }
 
         public string[] AvaiableShutterSpeeds { get; set; }

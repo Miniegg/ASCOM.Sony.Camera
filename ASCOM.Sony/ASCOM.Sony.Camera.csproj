@@ -16,9 +16,9 @@
     </UpgradeBackupLocation>
     <OldToolsVersion>3.5</OldToolsVersion>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
-    <ApplicationIcon>ASCOM.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\ASCOM.ico</ApplicationIcon>
     <SignAssembly>true</SignAssembly>
-    <AssemblyOriginatorKeyFile>ASCOMDriverTemplate.snk</AssemblyOriginatorKeyFile>
+    <AssemblyOriginatorKeyFile>Resources\ASCOMDriverTemplate.snk</AssemblyOriginatorKeyFile>
     <PublishUrl>publish\</PublishUrl>
     <Install>true</Install>
     <InstallFrom>Disk</InstallFrom>
@@ -117,7 +117,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Camera.cs" />
-    <Compile Include="CameraModel.cs" />
+    <Compile Include="domain\CameraModel.cs" />
     <Compile Include="CameraModelsManagerForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -125,12 +125,12 @@
       <DependentUpon>CameraModelsManagerForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Driver.cs" />
-    <Compile Include="ExifToolWrapper.cs" />
-    <Compile Include="GetWindows.cs" />
-    <Compile Include="ImageDataProcessor.cs" />
+    <Compile Include="domain\ExifToolWrapper.cs" />
+    <Compile Include="domain\GetWindows.cs" />
+    <Compile Include="domain\ImageDataProcessor.cs" />
     <Compile Include="ImagingEdgeRemoteInterop.cs" />
-    <Compile Include="LibRaw.cs" />
-    <Compile Include="ListViewControl.cs" />
+    <Compile Include="domain\LibRaw.cs" />
+    <Compile Include="domain\ListViewControl.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
@@ -142,15 +142,17 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="domain\Settings.cs" />
     <Compile Include="SetupDialogForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="SetupDialogForm.designer.cs">
       <DependentUpon>SetupDialogForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="ShutterSpeedMap.cs" />
     <Compile Include="SonyCamera.cs" />
-    <Compile Include="TreeNode.cs" />
+    <Compile Include="domain\TreeNode.cs" />
+    <Compile Include="domain\Window.cs" />
+    <Compile Include="domain\WindowObject.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="CameraModelsManagerForm.resx">
@@ -168,17 +170,14 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
-    <None Include="ASCOM.png" />
-    <None Include="ASCOMDriverTemplate.snk" />
-    <None Include="cameramodels.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
+    <None Include="Resources\ASCOM.png" />
+    <None Include="Resources\ASCOMDriverTemplate.snk" />
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
-    <Content Include="ASCOM.ico" />
+    <Content Include="Resources\ASCOM.ico" />
     <Content Include="exiftool.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -187,7 +186,7 @@
     </Content>
     <Content Include="ReadMe.htm" />
     <None Include="Resources\ASCOM.bmp" />
-    <None Include="ShutterSpeedMap.json">
+    <None Include="Settings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

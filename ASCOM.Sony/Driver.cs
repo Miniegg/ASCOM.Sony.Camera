@@ -23,18 +23,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text;
 using System.Runtime.InteropServices;
 
-using ASCOM;
-using ASCOM.Astrometry;
 using ASCOM.Astrometry.AstroUtils;
 using ASCOM.Utilities;
 using ASCOM.DeviceInterface;
 using System.Globalization;
 using System.Collections;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -53,36 +48,28 @@ namespace ASCOM.Sony
         /// ASCOM DeviceID (COM ProgID) for this driver.
         /// The DeviceID is used by ASCOM applications to load the driver at runtime.
         /// </summary>
-        internal static string driverID = "ASCOM.Sony.Camera";
-        
-        /// <summary>
-        /// Driver description that displays in the ASCOM Chooser.
-        /// </summary>
-        private static string driverDescription = "ASCOM Sony Camera";
+        private static string _deviceId = "ASCOM.Sony.Camera";
+        private static string _deviceType = "Camera";
+        private static string _deviceDescription = "ASCOM Sony Camera";
 
-        internal static string cameraModelProfileName = "Camera Model"; // Constants used for Profile persistence
+        // ASCOM device property keys
+        private static string _selectedCameraIdKey = "selectedCameraId";
+        private static string _selectedIsoKey = "selectedIso";
+        private static string _imageFormatKey = "imageFormat";
+        private static string _autoDeleteImageKey = "autoDelete";
+        private static string _traceEnableKey = "traceEnable";
+        private static string _sonyAppPathKey = "sonyAppPath";
+        private static string _bulbModeKey = "bulbMode";
 
-        internal static string isoProfileName = "ISO";
+        public static string SelectedCameraId = "";
+        public static short SelectedIso = 100;
+        public static ImageFormat ImageFormat = ImageFormat.CFA;
+        public static bool AutoDeleteImage = false;
+        public static bool TraceEnabled = false;
+        public static string SonyAppPath = "";
+        public static bool BulbMode = false;
 
-        internal static string imageFormatProfileName = "Image Format";
-        internal static ImageFormat imageFormatDefault = ImageFormat.CFA;
-
-        internal static string autoDeleteImageFileProfileName = "Auto-delete image file";
-        internal static bool autoDeleteImageFileDefault = false;
-
-        internal static string traceStateProfileName = "Trace Level";
-        internal static string traceStateDefault = "false";
-
-        internal static CameraModel[] cameraModels;
-        internal static CameraModel cameraModel;
-        internal static ShutterSpeed[] shutterSpeedMap;
-
-        internal static string remoteAppPath = @"D:\SonyImagaingEdge\Sony\Remote.exe";
-
-        internal static short iso;
-        internal static ImageFormat imageFormat;
-        
-        internal static bool autoDeleteImageFile;
+        internal static Settings Settings;
 
         /// <summary>
         /// Private variable to hold an ASCOM Utilities object
@@ -118,15 +105,14 @@ namespace ASCOM.Sony
             if (IsConnected)
                 System.Windows.Forms.MessageBox.Show("Already connected, just press OK");
 
-
-            DeserializeModelsFromJson();
+            var profile = ReadProfile();
 
             using (SetupDialogForm F = new SetupDialogForm())
             {
                 var result = F.ShowDialog();
                 if (result == System.Windows.Forms.DialogResult.OK)
                 {
-                    WriteProfile(); // Persist device configuration values to the ASCOM Profile store
+                    WriteProfile(profile); // Persist device configuration values to the ASCOM Profile store
                 }
             }
         }
@@ -193,8 +179,8 @@ namespace ASCOM.Sony
             // TODO customise this device description
             get
             {
-                tl.LogMessage("Description Get", driverDescription);
-                return driverDescription;
+                tl.LogMessage("Description Get", _deviceDescription);
+                return _deviceDescription;
             }
         }
 
@@ -266,11 +252,11 @@ namespace ASCOM.Sony
                 P.DeviceType = "Camera";
                 if (bRegister)
                 {
-                    P.Register(driverID, driverDescription);
+                    P.Register(_deviceId, _deviceDescription);
                 }
                 else
                 {
-                    P.Unregister(driverID);
+                    P.Unregister(_deviceId);
                 }
             }
         }
@@ -348,56 +334,81 @@ namespace ASCOM.Sony
         }
 
         /// <summary>
-        /// Read the device configuration from the ASCOM Profile store
+        /// Get the last selected camera model from the list of cameras by ID
+        /// If a camera has not been selected then choose the first from the list
+        /// Or if an id is provided get that one
         /// </summary>
-        internal void ReadProfile()
+        public static CameraModel GetSelectedCameraModel(string id = null)
         {
-            using (Profile driverProfile = new Profile())
-            {
-                driverProfile.DeviceType = "Camera";
-                tl.Enabled = Convert.ToBoolean(driverProfile.GetValue(driverID, traceStateProfileName, string.Empty, traceStateDefault));
-                
-                DeserializeModelsFromJson();
-
-                string cameraModelID = driverProfile.GetValue(driverID, cameraModelProfileName, string.Empty, "");
-
-               var firstCameraModel = cameraModels.FirstOrDefault();
-
-                if (string.IsNullOrEmpty(cameraModelID))
-                {
-                    cameraModel = firstCameraModel;
-                }
-                else
-                {
-                    cameraModel = cameraModels.FirstOrDefault(m => m.ID == cameraModelID) ?? firstCameraModel;
-                }
-
-                string isoAsString = driverProfile.GetValue(driverID, isoProfileName, string.Empty, cameraModel.Gains.First().ToString());
-                iso = short.Parse(isoAsString);
-                Gain = (short) Array.IndexOf(Gains.ToArray(), iso);
-
-                imageFormat = (ImageFormat) Enum.Parse(typeof(ImageFormat), driverProfile.GetValue(driverID, imageFormatProfileName, string.Empty, ImageFormat.CFA.ToString()));
-                autoDeleteImageFile = Boolean.Parse(driverProfile.GetValue(driverID,autoDeleteImageFileProfileName, string.Empty,false.ToString()));
-
-                _cameraNumX = cameraModel.Sensor.GetReadoutWidth(imageFormat);
-                _cameraNumY = cameraModel.Sensor.GetReadoutHeight(imageFormat);
-            }
+            id = id ?? SelectedCameraId;
+            return Settings.CameraModels.Where(cm => cm.ID == id).FirstOrDefault() ?? Settings.CameraModels.FirstOrDefault();
         }
 
         /// <summary>
-        /// Write the device configuration to the  ASCOM  Profile store
+        /// Read the device configuration from the ASCOM Profile store
         /// </summary>
-        internal void WriteProfile()
+        internal Profile ReadProfile()
         {
-            using (Profile driverProfile = new Profile())
+            // new ASCOM profile
+            var profile = new Profile();
+            profile.DeviceType = _deviceType;
+
+            // register if first time setup
+            if (!profile.IsRegistered(_deviceId))
+                profile.Register(_deviceId, _deviceDescription);
+
+            // create new cameras if new models exist
+            DeserializeModelsFromJson();
+
+            // check if user has selected a camera before
+            try
             {
-                driverProfile.DeviceType = "Camera";
-                driverProfile.WriteValue(driverID, traceStateProfileName, tl.Enabled.ToString());
-                driverProfile.WriteValue(driverID, cameraModelProfileName, cameraModel.ID);
-                driverProfile.WriteValue(driverID, isoProfileName, iso.ToString());
-                driverProfile.WriteValue(driverID,imageFormatProfileName,imageFormat.ToString());
-                driverProfile.WriteValue(driverID,autoDeleteImageFileProfileName,autoDeleteImageFile.ToString());
+                ReadProfileValues(profile);
             }
+            catch(Exception ex)
+            {
+                WriteProfileValues(profile);
+            }
+            return profile;
+        }
+
+        /// <summary>
+        /// Write the profile passed in to the ASCOM Profile store
+        /// Then read it to the class variables
+        /// </summary>
+        internal void WriteProfile(Profile profile)
+        {
+            WriteProfileValues(profile);
+            ReadProfileValues(profile);
+        }
+
+        /// <summary>
+        /// Read the device configuration from the ASCOM Profile store to class variables
+        /// </summary>
+        private void ReadProfileValues(Profile profile)
+        {
+            SelectedCameraId = profile.GetValue(_deviceId, _selectedCameraIdKey);
+            short.TryParse(profile.GetValue(_deviceId, _selectedIsoKey), out SelectedIso);
+            ImageFormat = (ImageFormat) Enum.Parse(typeof(ImageFormat), profile.GetValue(_deviceId, _imageFormatKey));
+            AutoDeleteImage = Boolean.Parse(profile.GetValue(_deviceId, _autoDeleteImageKey));
+            TraceEnabled = Boolean.Parse(profile.GetValue(_deviceId, _traceEnableKey));
+            tl.Enabled = TraceEnabled;
+            SonyAppPath = profile.GetValue(_deviceId, _sonyAppPathKey);
+            BulbMode = Boolean.Parse(profile.GetValue(_deviceId, _bulbModeKey));
+        }
+
+        /// <summary>
+        /// Write the device class variables to ASCOM  Profile store
+        /// </summary>
+        internal void WriteProfileValues(Profile profile)
+        {
+            profile.WriteValue(_deviceId, _selectedCameraIdKey, SelectedCameraId);
+            profile.WriteValue(_deviceId, _selectedIsoKey, SelectedIso.ToString());
+            profile.WriteValue(_deviceId, _imageFormatKey, ImageFormat.ToString());
+            profile.WriteValue(_deviceId, _autoDeleteImageKey, AutoDeleteImage.ToString());
+            profile.WriteValue(_deviceId, _traceEnableKey, TraceEnabled.ToString());
+            profile.WriteValue(_deviceId, _sonyAppPathKey, SonyAppPath);
+            profile.WriteValue(_deviceId, _bulbModeKey, BulbMode.ToString());
         }
 
         /// <summary>
@@ -427,31 +438,19 @@ namespace ASCOM.Sony
         private static void DeserializeModelsFromJson()
         {
             tl.LogMessage("DeserializeModelsFromJson", "");
+            
+            string settingsPath = Path.Combine(AssemblyDirectory, "Settings.json");
+            string settingsModel = File.ReadAllText(settingsPath);
+            Settings = JsonConvert.DeserializeObject<Settings>(settingsModel);     
 
-            try
+            foreach (var cameraModel in Settings.CameraModels)
             {
-                string cameraDataJsonPath = Path.Combine(AssemblyDirectory, "cameramodels.json");
-                string cameraDataJsonModels = File.ReadAllText(cameraDataJsonPath);
-                cameraModels = JsonConvert.DeserializeObject<CameraModel[]>(cameraDataJsonModels);
-
-                // need the shutter speed map for each model, dont want to repeat the JSON,
-                string shutterSpeedMapJsonPath = Path.Combine(AssemblyDirectory, "shutterSpeedMap.json");
-                string shutterSpeedMapJsonModels = File.ReadAllText(shutterSpeedMapJsonPath);
-                shutterSpeedMap = JsonConvert.DeserializeObject<ShutterSpeed[]>(shutterSpeedMapJsonModels);
-
-                foreach (var cameraModel in cameraModels)
+                var shutterSpeeds = new List<ShutterSpeed>();
+                foreach (var avaiableShutterSpeed in cameraModel.AvaiableShutterSpeeds)
                 {
-                    var shutterSpeeds = new List<ShutterSpeed>();
-                    foreach (var avaiableShutterSpeed in cameraModel.AvaiableShutterSpeeds)
-                    {
-                        shutterSpeeds.Add(shutterSpeedMap.Where(SSM => SSM.Name == avaiableShutterSpeed).First());
-                    }
-                    cameraModel.ShutterSpeeds = shutterSpeeds.ToArray();
+                    shutterSpeeds.Add(Settings.ShutterSpeedMap.Where(SSM => SSM.Name == avaiableShutterSpeed).First());
                 }
-            }
-            catch (Exception e)
-            {
-                tl.LogIssue("DeserializeModelsFromJson", $"Unable to deserialize list of models. Exception: {e.ToString()} ");
+                cameraModel.ShutterSpeeds = shutterSpeeds.ToArray();
             }
         }
     }

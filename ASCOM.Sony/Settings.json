@@ -1,0 +1,513 @@
+﻿{
+  "CameraModels": [
+    // simple template camera, the bare minimum to get going
+    // copy and paste this one if your camera isnt on here.
+    // replace all the values in the template with your cameras values, its very important they are all correct!
+    {
+      "ID": "TemplateCam", // Name that comes up in the 'select camera screen' of the remote app
+      "Sensor": {
+        "FrameWidth": 4256, // Use RawDigger to get this, other apps may report incorrect values
+        "FrameHeight": 2848 // Use RawDigger to get this, other apps may report incorrect values
+      },
+      // 'Gains' contains the iso values you want to be avaiable in the programs using the ASCOM driver, ASCOM cannot handle gains over 32,767
+      // Personally i dont want a huge list for my profile so i've removed some (still have to be values from the AllGains list!)
+      "Gains": [ 100, 200, 400, 800, 1600, 2000, 3200, 6400, 12800, 25600 ],
+      // 'AllGains' and 'AvaiableShutterSpeeds' Full lists of ISO and Shutter Speed values displayed in the UI for your camera in the correct order. needs to be known to adjust the camera's iso/shutter speed correctly.
+      "AllGains": [ "AUTO", "100", "125", "160", "200", "250", "320", "400", "500", "640", "800", "1000", "1250", "1600", "2000", "2500", "3200", "4000", "5000", "6400", "8000", "10000", "12800", "16000", "20000", "25600", "32000", "40000", "51200", "64000", "80000", "102400", "128000", "160000", "204800", "256000", "320000", "409600" ],
+      "AvaiableShutterSpeeds": [ "1/8000", "1/6400", "1/5000", "1/4000", "1/3200", "1/2500", "1/2000", "1/1600", "1/1250", "1/1000", "1/800", "1/640", "1/500", "1/400", "1/320", "1/250", "1/200", "1/160", "1/125", "1/80", "1/60", "1/50", "1/40", "1/30", "1/25", "1/20", "1/15", "1/13", "1/10", "1/8", "1/6", "1/5", "1/4", "1/3", "0.4\"", "0.5\"", "0.6\"", "0.8\"", "1\"", "1.3\"", "1.6\"", "2\"", "2.5\"", "3.2\"", "4\"", "5\"", "6\"", "8\"", "10\"", "13\"", "15\"", "20\"", "25\"", "30\"" ]
+    },
+    {
+      "ID": "SLTA99", // REQUIRED
+      "Name": "Sony SLT-A99", // optional
+      "Sensor": { //good source to get information about your camera and sensor characteristics - https://web.archive.org/web/20181005193137/http://www.sensorgen.info/
+        "Name": "IMX157AQR", //optional - can leave empty
+        "Width": 35.8, //optional - physical width of your image sensor in millimeters, google it; as of now driver not using this value so you can leave it empty
+        "Height": 23.8, //optional - physical width of your image sensor in millimeters, google it; as of now driver not using this value so you can leave it empty
+        "FrameWidth": 6018, //REQUIRED - this is resolution of RAW files produced by your camera
+        "FrameHeight": 4024, //REQUIRED - this is resolution of RAW files produced by your camera
+        "CropWidth": 6000, //required - for JPG image format - this is resolution of JPG files produced by your camera
+        "CropHeight": 4000, //required - for JPG image format - this is resolution of JPG files produced by your camera
+        "PixelSizeWidth": 5.93, //optional - google it or get approximate value using formula sensor width converted to microns (multiply mm by 1000) divided by FrameWidth
+        "PixelSizeHeight": 5.93, //optional - google it or get approximate value using formula sensor height converted to microns (multiply mm by 1000) divided by FrameHeight
+        "MaxADU": 16383, //optional - by default is set to a 14bit sensor
+        "ElectronsPerADU": 1.0, // optional - not used right now, leave as 1.0
+        "FullWellCapacity": 32767.0, //optional - not used right now, leave as 32767.0
+        "CCDTemperature": null //optional - some apps do not follow ASCOM Camera suggested implementation and tries to read CCDTemperature even if CanSetCCDTemperature is false ; if you have this issue try to set this to 0
+      },
+      "ExposureMin": 0.000125, // optional - minimum possible exposure in seconds, just check it on your camera, for SLT-A99 its 1/8000
+      "ExposureMax": 3600.0, // optional - maximum possible exposure in seconds, should match value specified in BULB settings in Imaging Edge Remote app here - https://prnt.sc/pds6fj
+      // REQUIRED - AllGains
+      "AllGains": [ "50", "64", "80", "100", "125", "160", "200", "250", "320", "400", "500", "640", "800", "1000", "1250", "1600", "2000", "2500", "3200", "4000", "5000", "6400", "8000", "10000", "12800", "16000", "20000", "25600" ],
+      // REQUIRED - Gains
+      "Gains": [ 50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000, 5000, 6400, 8000, 10000, 12800, 16000, 20000, 25600 ], //list of possible ISO values for your camera
+      // REQUIRED - AvaiableShutterSpeeds is list of possible shutter speeds in seconds, each option have Name property which MUST match what you see here in Imaging Edge Remote app - https://prnt.sc/pds7ux
+      // depending on the age of the camera - you only need to care about small shutter speeds up to 2 seconds, for 2 seconds specify "BULB" as the Name ; for all exposures of 2 seconds or longer driver will use BULB mode
+      "AvaiableShutterSpeeds": [ "1/8000", "1/6400", "1/5000", "1/4000", "1/3200", "1/2500", "1/2000", "1/1600", "1/1250", "1/1000", "1/800", "1/640", "1/500", "1/400", "1/320", "1/250", "1/200", "1/160", "1/125", "1/80", "1/60", "1/50", "1/40", "1/30", "1/25", "1/20", "1/15", "1/13", "1/10", "1/8", "1/6", "1/5", "1/4", "1/3", "0.4\"", "0.5\"", "0.6\"", "0.8\"", "1\"", "1.3\"", "1.6\"", "2\"", "BULB" ],
+      "ExposureResolution": 0.1 //optional - not used right now, leave as 0.1
+    },
+    {
+      "ID": "SLTA77",
+      "Name": "Sony SLT-A77",
+      "Sensor": {
+        "Name": "",
+        "Width": 23.5,
+        "Height": 15.6,
+        "FrameWidth": 6018,
+        "FrameHeight": 4024,
+        "CropWidth": 6000,
+        "CropHeight": 4000,
+        "PixelSizeWidth": 3.9,
+        "PixelSizeHeight": 3.9,
+        "MaxADU": 16383,
+        "ElectronsPerADU": 1.0,
+        "FullWellCapacity": 32767.0,
+        "CCDTemperature": null
+      },
+      "ExposureMin": 0.000125,
+      "ExposureMax": 3600.0,
+      "AllGains": [ "50", "100", "125", "160", "200", "250", "320", "400", "500", "640", "800", "1000", "1250", "1600", "2000", "2500", "3200", "4000", "5000", "6400", "8000", "10000", "12800", "16000", "20000", "25600" ],
+      "Gains": [ 50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000, 5000, 6400, 8000, 10000, 12800, 16000, 20000, 25600 ], //list of possible ISO values for your camera
+      "AvaiableShutterSpeeds": [ "1/8000", "1/6400", "1/5000", "1/4000", "1/3200", "1/2500", "1/2000", "1/1600", "1/1250", "1/1000", "1/800", "1/640", "1/500", "1/400", "1/320", "1/250", "1/200", "1/160", "1/125", "1/80", "1/60", "1/50", "1/40", "1/30", "1/25", "1/20", "1/15", "1/13", "1/10", "1/8", "1/6", "1/5", "1/4", "1/3", "0.4\"", "0.5\"", "0.6\"", "0.8\"", "1\"", "1.3\"", "1.6\"", "2\"", "BULB" ],
+      "ExposureResolution": 0.1
+    },
+    {
+      "ID": "SLTA77II",
+      "Name": "Sony SLT-A77-II",
+      "Sensor": {
+        "Name": "",
+        "Width": 23.5,
+        "Height": 15.6,
+        "FrameWidth": 6018,
+        "FrameHeight": 4024,
+        "CropWidth": 6000,
+        "CropHeight": 4000,
+        "PixelSizeWidth": 3.9,
+        "PixelSizeHeight": 3.9,
+        "MaxADU": 16383,
+        "ElectronsPerADU": 1.0,
+        "FullWellCapacity": 32767.0,
+        "CCDTemperature": null
+      },
+      "ExposureMin": 0.000125,
+      "ExposureMax": 3600.0,
+      "AvaiableShutterSpeeds": [ "1/8000", "1/6400", "1/5000", "1/4000", "1/3200", "1/2500", "1/2000", "1/1600", "1/1250", "1/1000", "1/800", "1/640", "1/500", "1/400", "1/320", "1/250", "1/200", "1/160", "1/125", "1/80", "1/60", "1/50", "1/40", "1/30", "1/25", "1/20", "1/15", "1/13", "1/10", "1/8", "1/6", "1/5", "1/4", "1/3", "0.4\"", "0.5\"", "0.6\"", "0.8\"", "1\"", "1.3\"", "1.6\"", "2\"", "BULB" ],
+      "AllGains": [ "50", "100", "125", "160", "200", "250", "320", "400", "500", "640", "800", "1000", "1250", "1600", "2000", "2500", "3200", "4000", "5000", "6400", "8000", "10000", "12800", "16000", "20000", "25600" ],
+      "Gains": [ 50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000, 5000, 6400, 8000, 10000, 12800, 16000, 20000, 25600 ]
+    },
+    {
+      "ID": "A7",
+      "Name": "Sony A7",
+      "Sensor": {
+        "Name": "",
+        "Width": 35.8,
+        "Height": 23.9,
+        "FrameWidth": 6018,
+        "FrameHeight": 4024,
+        "CropWidth": 6000,
+        "CropHeight": 4000,
+        "PixelSizeWidth": 5.93,
+        "PixelSizeHeight": 5.93,
+        "MaxADU": 16383,
+        "ElectronsPerADU": 1.0,
+        "FullWellCapacity": 32767.0,
+        "CCDTemperature": 0
+      },
+      "ExposureMin": 0.000125,
+      "ExposureMax": 3600.0,
+      "AllGains": [ "50", "100", "125", "160", "200", "250", "320", "400", "500", "640", "800", "1000", "1250", "1600", "2000", "2500", "3200", "4000", "5000", "6400", "8000", "10000", "12800", "16000", "20000", "25600" ],
+      "Gains": [ 50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1000, 1250, 1600, 2000, 2500, 3200, 4000, 5000, 6400, 8000, 10000, 12800, 16000, 20000, 25600 ],
+      "AvaiableShutterSpeeds": [ "1/8000", "1/6400", "1/5000", "1/4000", "1/3200", "1/2500", "1/2000", "1/1600", "1/1250", "1/1000", "1/800", "1/640", "1/500", "1/400", "1/320", "1/250", "1/200", "1/160", "1/125", "1/80", "1/60", "1/50", "1/40", "1/30", "1/25", "1/20", "1/15", "1/13", "1/10", "1/8", "1/6", "1/5", "1/4", "1/3", "0.4\"", "0.5\"", "0.6\"", "0.8\"", "1\"", "1.3\"", "1.6\"", "2\"", "BULB" ]
+    },
+    {
+      "ID": "ILCE-7S",
+      "Name": "Sony A7s",
+      "Sensor": {
+        "Name": "",
+        "Width": 35.8,
+        "Height": 23.9,
+        "FrameWidth": 4256,
+        "FrameHeight": 2848,
+        "CropWidth": 4288,
+        "CropHeight": 2848,
+        "PixelSizeWidth": 8.4,
+        "PixelSizeHeight": 8.4,
+        "MaxADU": 16383,
+        "ElectronsPerADU": 1.0,
+        "FullWellCapacity": 32767.0,
+        "CCDTemperature": 0
+      },
+      "ExposureMin": 0.000125,
+      "ExposureMax": 30.0,
+      "AllGains": [ "AUTO", "100", "125", "160", "200", "250", "320", "400", "500", "640", "800", "1000", "1250", "1600", "2000", "2500", "3200", "4000", "5000", "6400", "8000", "10000", "12800", "16000", "20000", "25600", "32000", "40000", "51200", "64000", "80000", "102400", "128000", "160000", "204800", "256000", "320000", "409600" ],
+      "Gains": [ 100, 200, 400, 800, 1600, 2000, 3200, 6400, 12800, 25600 ],
+      // A7s used in Silent Shutter mode has no bulb mode.
+      "AvaiableShutterSpeeds": [ "1/8000", "1/6400", "1/5000", "1/4000", "1/3200", "1/2500", "1/2000", "1/1600", "1/1250", "1/1000", "1/800", "1/640", "1/500", "1/400", "1/320", "1/250", "1/200", "1/160", "1/125", "1/80", "1/60", "1/50", "1/40", "1/30", "1/25", "1/20", "1/15", "1/13", "1/10", "1/8", "1/6", "1/5", "1/4", "1/3", "0.4\"", "0.5\"", "0.6\"", "0.8\"", "1\"", "1.3\"", "1.6\"", "2\"", "2.5\"", "3.2\"", "4\"", "5\"", "6\"", "8\"", "10\"", "13\"", "15\"", "20\"", "25\"", "30\"" ]
+    }
+  ],
+
+  // --------------------------------------------------------------------------------------------------
+  // A lookup for what the UI shows (Name) to values used by the program (Duration Seconds)
+  // If your camera shows values not listed they can be added to this list
+  // Do not add enteries with duplicate Names.
+  // --------------------------------------------------------------------------------------------------
+  "ShutterSpeedMap": [
+    {
+      "DurationSeconds": 0,
+      "Name": "BULB"
+    },
+    {
+      "DurationSeconds": 0.000125,
+      "Name": "1/8000"
+    },
+    {
+      "DurationSeconds": 0.00015625,
+      "Name": "1/6400"
+    },
+    {
+      "DurationSeconds": 0.0002,
+      "Name": "1/5000"
+    },
+    {
+      "DurationSeconds": 0.00025,
+      "Name": "1/4000"
+    },
+    {
+      "DurationSeconds": 0.0003125,
+      "Name": "1/3200"
+    },
+    {
+      "DurationSeconds": 0.0004,
+      "Name": "1/2500"
+    },
+    {
+      "DurationSeconds": 0.0005,
+      "Name": "1/2000"
+    },
+    {
+      "DurationSeconds": 0.000625,
+      "Name": "1/1600"
+    },
+    {
+      "DurationSeconds": 0.0008,
+      "Name": "1/1250"
+    },
+    {
+      "DurationSeconds": 0.001,
+      "Name": "1/1000"
+    },
+    {
+      "DurationSeconds": 0.00125,
+      "Name": "1/800"
+    },
+    {
+      "DurationSeconds": 0.0015625,
+      "Name": "1/640"
+    },
+    {
+      "DurationSeconds": 0.002,
+      "Name": "1/500"
+    },
+    {
+      "DurationSeconds": 0.0025,
+      "Name": "1/400"
+    },
+    {
+      "DurationSeconds": 0.003125,
+      "Name": "1/320"
+    },
+    {
+      "DurationSeconds": 0.004,
+      "Name": "1/250"
+    },
+    {
+      "DurationSeconds": 0.005,
+      "Name": "1/200"
+    },
+    {
+      "DurationSeconds": 0.00625,
+      "Name": "1/160"
+    },
+    {
+      "DurationSeconds": 0.004,
+      "Name": "1/125"
+    },
+    {
+      "DurationSeconds": 0.0125,
+      "Name": "1/80"
+    },
+    {
+      "DurationSeconds": 0.016666666666666666,
+      "Name": "1/60"
+    },
+    {
+      "DurationSeconds": 0.02,
+      "Name": "1/50"
+    },
+    {
+      "DurationSeconds": 0.025,
+      "Name": "1/40"
+    },
+    {
+      "DurationSeconds": 0.033333333333333333,
+      "Name": "1/30"
+    },
+    {
+      "DurationSeconds": 0.04,
+      "Name": "1/25"
+    },
+    {
+      "DurationSeconds": 0.05,
+      "Name": "1/20"
+    },
+    {
+      "DurationSeconds": 0.066666666666666666,
+      "Name": "1/15"
+    },
+    {
+      "DurationSeconds": 0.076923076923076927,
+      "Name": "1/13"
+    },
+    {
+      "DurationSeconds": 0.1,
+      "Name": "1/10"
+    },
+    {
+      "DurationSeconds": 0.125,
+      "Name": "1/8"
+    },
+    {
+      "DurationSeconds": 0.16666666666666666,
+      "Name": "1/6"
+    },
+    {
+      "DurationSeconds": 0.2,
+      "Name": "1/5"
+    },
+    {
+      "DurationSeconds": 0.25,
+      "Name": "1/4"
+    },
+    {
+      "DurationSeconds": 0.33333333333333331,
+      "Name": "1/3"
+    },
+    {
+      "DurationSeconds": 0.4,
+      "Name": "0.4\""
+    },
+    {
+      "DurationSeconds": 0.5,
+      "Name": "0.5\""
+    },
+    {
+      "DurationSeconds": 0.6,
+      "Name": "0.6\""
+    },
+    {
+      "DurationSeconds": 0.8,
+      "Name": "0.8\""
+    },
+    {
+      "DurationSeconds": 1.0,
+      "Name": "1\""
+    },
+    {
+      "DurationSeconds": 1.3,
+      "Name": "1.3\""
+    },
+    {
+      "DurationSeconds": 1.6,
+      "Name": "1.6\""
+    },
+    {
+      "DurationSeconds": 2.0,
+      "Name": "2\""
+    },
+    {
+      "DurationSeconds": 2.5,
+      "Name": "2.5\""
+    },
+    {
+      "DurationSeconds": 3.2,
+      "Name": "3.2\""
+    },
+    {
+      "DurationSeconds": 4.0,
+      "Name": "4\""
+    },
+    {
+      "DurationSeconds": 5.0,
+      "Name": "5\""
+    },
+    {
+      "DurationSeconds": 6.0,
+      "Name": "6\""
+    },
+    {
+      "DurationSeconds": 8.0,
+      "Name": "8\""
+    },
+    {
+      "DurationSeconds": 10.0,
+      "Name": "10\""
+    },
+    {
+      "DurationSeconds": 13.0,
+      "Name": "13\""
+    },
+    {
+      "DurationSeconds": 15.0,
+      "Name": "15\""
+    },
+    {
+      "DurationSeconds": 20.0,
+      "Name": "20\""
+    },
+    {
+      "DurationSeconds": 25.0,
+      "Name": "25\""
+    },
+    {
+      "DurationSeconds": 30.0,
+      "Name": "30\""
+    }
+  ],
+
+  // --------------------------------------------------------------------------------------------------
+  // not advisable to change these unless you're having problems with the driver doing things too fast.
+  // --------------------------------------------------------------------------------------------------
+  "Delays": {
+    "FileAccessRetry": 500, // delay between file image file access retries if the first fails
+    "FileAccessTimer": 1000, // delay after verifying we can access the file, before reading the file
+    "RemoteWindowRetry": 500, // delay between checking if the Remote app has loaded
+    "NoWindowRetry": 500, // delay when no active remote window is found, can happen after selecting a camera from camera select screen
+    "StateMachineRetry": 500, // delay between window state machine states
+    "CannotCreateFolderDelay": 10000, // user needs to create a new folder to save the photos if the current one cannot be accessed
+    "SettingVerification": 1000, // wait for UI to display the current camera setting, if too short will cause driver to get into infinite settings changing loop
+    "SettingUpdate": 200 // delay after pressing ISO/SS increase/decrease before pressing again, can be done much faster than the UI can update.
+  },
+
+  // --------------------------------------------------------------------------------------------------
+  // DO NOT CHANGE THESE!
+  // Unless Sony have changed something in the Remote App user interface and broken the driver
+  // The places the buttons point can be changed without re-compiling and re-building the app
+  // (in the event all the devs have died or no-one cares anymore)
+  // --------------------------------------------------------------------------------------------------
+  "Windows": [
+    {
+      "WindowType": "noCameraConnected",
+      "WindowObjects": [
+        {
+          "Name": "ok",
+          "ChildIndex": [ 0 ],
+          "ExactWindowText": "OK"
+        },
+        {
+          "Name": "cameraNotConnectedMessage",
+          "ChildIndex": [ 2 ],
+          "ExactWindowText": "The camera is not connected. Check the USB or network connection."
+        }
+      ]
+    },
+    {
+      "WindowType": "selectCamera",
+      "WindowObjects": [
+        {
+          "Name": "listView",
+          "ChildIndex": [ 0 ]
+        },
+        {
+          "Name": "refresh",
+          "ChildIndex": [ 2 ],
+          "ExactWindowText": "Refresh"
+        },
+        {
+          "Name": "close",
+          "ChildIndex": [ 3 ],
+          "ExactWindowText": "Close"
+        }
+      ]
+    },
+    {
+      "WindowType": "cannotAccessFolder",
+      "WindowObjects": [
+        {
+          "Name": "ok",
+          "ChildIndex": [ 0 ],
+          "ExactWindowText": "OK"
+        },
+        {
+          "Name": "cannotAccessTheFolder",
+          "ChildIndex": [ 2 ],
+          "ExactWindowText": "Cannot access the folder."
+        }
+      ]
+    },
+    {
+      "WindowType": "cannotCreateFolder",
+      "WindowObjects": [
+        {
+          "Name": "ok",
+          "ChildIndex": [ 0 ],
+          "ExactWindowText": "OK"
+        },
+        {
+          "Name": "cannotCreateFolder",
+          "ChildIndex": [ 2 ],
+          "ExactWindowText": "Cannot create a folder because an invalid folder name was entered."
+        }
+      ]
+    },
+    {
+      "WindowType": "main",
+      "WindowObjects": [
+        {
+          "Name": "shutterButton",
+          "ChildIndex": [ 3, 0, 0 ]
+        },
+        {
+          "Name": "modeLabel",
+          "ChildIndex": [ 3, 2, 0 ],
+          "ExactWindowText": "  Mode"
+        },
+        {
+          "Name": "FLabel",
+          "ChildIndex": [ 3, 2, 2 ],
+          "ExactWindowText": "  F"
+        },
+        {
+          "Name": "shutterSpeedLabel",
+          "ChildIndex": [ 3, 2, 7 ]
+        },
+        {
+          "Name": "isoLabel",
+          "ChildIndex": [ 3, 2, 9 ]
+        },
+        {
+          "Name": "shutterSpeedIncreaseButton",
+          "ChildIndex": [ 3, 2, 14 ]
+        },
+        {
+          "Name": "shutterSpeedDecreaseButton",
+          "ChildIndex": [ 3, 2, 15 ]
+        },
+        {
+          "Name": "isoIncreaseButton",
+          "ChildIndex": [ 3, 2, 18 ]
+        },
+        {
+          "Name": "isoDecreaseButton",
+          "ChildIndex": [ 3, 2, 19 ]
+        },
+        {
+          "Name": "fileFormatButton",
+          "ChildIndex": [ 3, 3, 9 ]
+        },
+        {
+          "Name": "folderCombobox",
+          "ChildIndex": [ 3, 6, 9 ]
+        }
+      ]
+    }
+  ]
+}

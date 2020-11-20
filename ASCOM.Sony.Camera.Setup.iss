@@ -36,8 +36,7 @@ Name: "{cf}\ASCOM\Uninstall\Camera\ASCOM.Sony.Camera"
 [Files]
 Source: "bin\ASCOM.Sony.Camera.dll"; DestDir: "{app}"; Flags: ignoreversion 
 Source: "bin\Newtonsoft.Json.dll"; DestDir: "{app}"
-Source: "bin\cameramodels.json"; DestDir: "{app}"
-Source: "bin\ShutterSpeedMap.json"; DestDir: "{app}"
+Source: "bin\settings.json"; DestDir: "{app}"
 Source: "readme.txt"; DestDir: "{app}"; Flags: isreadme
 Source: "libraw32.dll"; DestDir: "{app}"; DestName: "libraw.dll";
 Source: "vcredist_x86.exe"; DestDir: {tmp}; Flags: deleteafterinstall
