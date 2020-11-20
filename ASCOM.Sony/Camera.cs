@@ -36,6 +36,7 @@ namespace ASCOM.Sony
             tl.LogMessage("Camera", "Starting initialization");
             ReadProfile(); // Read device configuration from the ASCOM Profile store
             connectedState = false; // Initialise connected to false
+            _cameraState = CameraStates.cameraIdle;
             tl.LogMessage("Camera", "Completed initialization");
         }
 

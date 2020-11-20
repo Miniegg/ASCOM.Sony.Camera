@@ -28,7 +28,7 @@ namespace ASCOM.Sony.TestConsoleApp
                     var key = Console.ReadKey(true);
                     if (key.Key == ConsoleKey.S)
                     {
-                        var exposureLength = 5;
+                        var exposureLength = (double)1/2500;
                         camera.Gain = 6;
                         camera.StartExposure(exposureLength, true);                        
                         while (!camera.ImageReady)

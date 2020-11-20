@@ -384,7 +384,7 @@
     "StateMachineRetry": 500, // delay between window state machine states
     "CannotCreateFolderDelay": 10000, // user needs to create a new folder to save the photos if the current one cannot be accessed
     "SettingVerification": 1000, // wait for UI to display the current camera setting, if too short will cause driver to get into infinite settings changing loop
-    "SettingUpdate": 200 // delay after pressing ISO/SS increase/decrease before pressing again, can be done much faster than the UI can update.
+    "SettingUpdate": 250 // delay after pressing ISO/SS increase/decrease before pressing again, can be done much faster than the UI can update.
   },
 
   // --------------------------------------------------------------------------------------------------

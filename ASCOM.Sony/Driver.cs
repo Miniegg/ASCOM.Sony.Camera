@@ -102,8 +102,6 @@ namespace ASCOM.Sony
         {
             // consider only showing the setup dialog if not connected
             // or call a different dialog if connected
-            if (IsConnected)
-                System.Windows.Forms.MessageBox.Show("Already connected, just press OK");
 
             var profile = ReadProfile();
 

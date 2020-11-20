@@ -266,8 +266,6 @@ namespace ASCOM.Sony
             if (hRemoteAppWindow == IntPtr.Zero)
             {
                 _traceLogger.LogMessage("DBUG-startRemoteApp", "Start Process");
-
-                _traceLogger.LogMessage("DBUG-startRemoteApp", "Start Process");
                 if (!string.IsNullOrEmpty(Camera.SonyAppPath))
                 {
                     var appPath = $"{Camera.SonyAppPath}\\Remote.exe";
@@ -275,7 +273,6 @@ namespace ASCOM.Sony
                 }
                 
                 var checkWindowAttempts = 10;
-                var msBetweenCheck = 500;
                 for (int i = 0; i < checkWindowAttempts; i++)
                 {
                     hRemoteAppWindow = (IntPtr)FindWindow(null, "Remote");
